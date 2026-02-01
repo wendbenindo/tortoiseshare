@@ -1,0 +1,2 @@
+TortoiseShare est une application de partage de fichiers et d'écran entre mobile (Android/iOS) et desktop (Windows) utilisant Flutter pour les deux plateformes. L'application fonctionne en réseau local, y compris via hotspot mobile.
+Logo: 🐢 (Tortue = stable, fiable, partage lent mais sûr)
