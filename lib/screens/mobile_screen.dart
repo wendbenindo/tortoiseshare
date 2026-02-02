@@ -124,6 +124,12 @@ class _MobileScreenState extends State<MobileScreen> {
         _pcName = name.isNotEmpty ? name : 'PC TortoiseShare';
       });
       _showSnackBar('Connecté à $_pcName', AppColors.success);
+    } else if (message == 'FILE|REJECTED') {
+      // Le fichier a été refusé par le PC
+      setState(() {
+        _isTransferring = false;
+      });
+      _showSnackBar('❌ Fichier refusé par le PC', AppColors.error);
     }
   }
   

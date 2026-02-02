@@ -20,6 +20,9 @@ class _DesktopScreenState extends State<DesktopScreen> {
   final List<LogEntry> _logs = [];
   int _messagesReceived = 0;
   
+  // Pour les demandes de fichiers en attente
+  final List<FileRequest> _pendingFileRequests = [];
+  
   @override
   void initState() {
     super.initState();
@@ -80,16 +83,17 @@ class _DesktopScreenState extends State<DesktopScreen> {
         break;
         
       case ServerMessageType.fileStart:
-        _addLog('📥 Réception: ${message.data['fileName']} (${_formatBytes(message.data['fileSize'])})', 
-                LogType.file, Icons.file_download,
-                sender: message.data['from']);
+        // Afficher une demande d'acceptation
+        final fileName = message.data['fileName'];
+        final fileSize = message.data['fileSize'];
+        final from = message.data['from'];
+        
+        _showFileRequestDialog(fileName, fileSize, from);
         break;
         
       case ServerMessageType.fileProgress:
-        final progress = (message.data['progress'] * 100).toStringAsFixed(0);
-        _addLog('📊 Progression: ${message.data['fileName']} - $progress%', 
-                LogType.file, Icons.downloading,
-                sender: message.data['from']);
+        // Ne plus afficher de log pour chaque progression
+        // Juste mettre à jour l'état interne si besoin
         break;
         
       case ServerMessageType.fileComplete:
@@ -116,6 +120,106 @@ class _DesktopScreenState extends State<DesktopScreen> {
   void _showNotification(String message) {
     // TODO: Ajouter une vraie notification système
     print('🔔 Notification: $message');
+  }
+  
+  // Afficher une demande d'acceptation de fichier
+  void _showFileRequestDialog(String fileName, int fileSize, String from) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.file_download, color: AppColors.primary, size: 32),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text('Fichier entrant', style: TextStyle(fontSize: 20)),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Un appareil souhaite vous envoyer un fichier :',
+                 style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.insert_drive_file, color: AppColors.primary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          fileName,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text('Taille: ${_formatBytes(fileSize)}',
+                       style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+                  const SizedBox(height: 4),
+                  Text('De: $from',
+                       style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text('Le fichier sera sauvegardé dans :',
+                 style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+            const SizedBox(height: 4),
+            Text('Downloads/TortoiseShare/',
+                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _rejectFile(fileName, from);
+            },
+            child: Text('Refuser', style: TextStyle(color: AppColors.error)),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _acceptFile(fileName, fileSize, from);
+            },
+            icon: Icon(Icons.check, color: Colors.white),
+            label: Text('Accepter', style: TextStyle(color: Colors.white)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.success,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  void _acceptFile(String fileName, int fileSize, String from) {
+    _addLog('✅ Accepté: $fileName', LogType.file, Icons.check_circle, sender: from);
+    _addLog('📥 Réception en cours...', LogType.file, Icons.downloading, sender: from);
+    // Le serveur continue automatiquement la réception
+  }
+  
+  void _rejectFile(String fileName, String from) {
+    _addLog('❌ Refusé: $fileName', LogType.file, Icons.cancel, sender: from);
+    // TODO: Envoyer un message au client pour annuler
+    _server.sendToClient(from, 'FILE|REJECTED\n');
   }
   
   void _addLog(String message, LogType type, IconData icon, {String? sender}) {
@@ -558,6 +662,19 @@ enum LogType {
   screen,
   mobile,
   alert,
-  file,      // Nouveau
+  file,
   error,
+}
+
+// Demande de fichier en attente
+class FileRequest {
+  final String fileName;
+  final int fileSize;
+  final String from;
+  
+  FileRequest({
+    required this.fileName,
+    required this.fileSize,
+    required this.from,
+  });
 }
