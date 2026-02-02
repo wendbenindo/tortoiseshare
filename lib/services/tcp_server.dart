@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import '../core/constants.dart';
 import '../models/device.dart';
 import '../models/file_transfer.dart';
+import '../models/remote_file.dart';
 import 'file_transfer_service.dart';
 
 // Service serveur TCP pour la communication desktop
@@ -278,6 +279,30 @@ class TcpServer {
         type: ServerMessageType.alert,
         data: {'from': clientIP, 'alertType': alertType},
       ));
+    } else if (message.startsWith('FILE|LIST_RESPONSE|')) {
+      // Réponse avec la liste des fichiers
+      final jsonData = message.substring(19);
+      try {
+        final List<dynamic> filesJson = jsonDecode(jsonData);
+        final files = filesJson.map((json) => RemoteFile.fromJson(json)).toList();
+        
+        _messageController.add(ServerMessage(
+          type: ServerMessageType.fileListResponse,
+          data: {'from': clientIP, 'files': files},
+        ));
+      } catch (e) {
+        print('❌ Erreur parsing FILE|LIST_RESPONSE: $e');
+        _messageController.add(ServerMessage(
+          type: ServerMessageType.fileListError,
+          data: {'from': clientIP, 'error': e.toString()},
+        ));
+      }
+    } else if (message.startsWith('FILE|LIST_ERROR|')) {
+      final error = message.substring(16);
+      _messageController.add(ServerMessage(
+        type: ServerMessageType.fileListError,
+        data: {'from': clientIP, 'error': error},
+      ));
     }
   }
   
@@ -296,6 +321,21 @@ class TcpServer {
       print('❌ Erreur envoi: $e');
       return false;
     }
+  }
+  
+  // Demander la liste des fichiers racines au mobile
+  Future<void> requestRootDirectories(String clientIP) async {
+    await sendToClient(clientIP, 'FILE|LIST|ROOT');
+  }
+  
+  // Demander la liste des fichiers d'un répertoire au mobile
+  Future<void> requestDirectoryList(String clientIP, String path) async {
+    await sendToClient(clientIP, 'FILE|LIST|$path');
+  }
+  
+  // Demander le téléchargement d'un fichier depuis le mobile
+  Future<void> requestFileDownload(String clientIP, String filePath) async {
+    await sendToClient(clientIP, 'FILE|DOWNLOAD|$filePath');
   }
   
   // Nettoyer les ressources
@@ -329,10 +369,12 @@ enum ServerMessageType {
   screenRequest,
   mobileConnected,
   alert,
-  fileStart,      // Nouveau
-  fileProgress,   // Nouveau
-  fileComplete,   // Nouveau
-  fileError,      // Nouveau
+  fileStart,
+  fileProgress,
+  fileComplete,
+  fileError,
+  fileListResponse,  // Nouveau : réponse avec la liste des fichiers
+  fileListError,     // Nouveau : erreur lors de la liste
 }
 
 // Message du serveur

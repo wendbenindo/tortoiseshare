@@ -1,4 +1,24 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          xmlns:tools="http://schemas.android.com/tools">
+    <!-- Permissions pour accéder au réseau -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    
+    <!-- Permissions pour accéder aux fichiers (Android 12 et inférieur) -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" 
+                     android:maxSdkVersion="32" />
+    
+    <!-- Permission pour accéder aux fichiers (Android 13+) -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    
+    <!-- Permission pour gérer tous les fichiers (optionnel, pour accès complet) -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" 
+                     tools:ignore="ScopedStorage" />
+    
     <application
         android:label="tortoiseshare"
         android:name="${applicationName}"

@@ -44,3 +44,5 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 AMELIORATIONS_UX.md
+DEMO_EXPLORATEUR.md
+EXPLORATEUR_FICHIERS.md

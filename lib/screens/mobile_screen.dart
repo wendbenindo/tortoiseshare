@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../core/colors.dart';
 import '../services/network_scanner.dart';
 import '../services/tcp_client.dart';
@@ -38,6 +39,9 @@ class _MobileScreenState extends State<MobileScreen> {
   void initState() {
     super.initState();
     
+    // Demander les permissions au démarrage
+    _requestPermissions();
+    
     // Écouter les messages du serveur
     _client.messageStream.listen((message) {
       _handleServerMessage(message);
@@ -52,6 +56,25 @@ class _MobileScreenState extends State<MobileScreen> {
         });
       }
     };
+  }
+  
+  // Demander les permissions de stockage
+  Future<void> _requestPermissions() async {
+    // Demander les permissions de stockage
+    if (await Permission.storage.isDenied) {
+      await Permission.storage.request();
+    }
+    
+    // Pour Android 13+ (API 33+)
+    if (await Permission.photos.isDenied) {
+      await Permission.photos.request();
+    }
+    if (await Permission.videos.isDenied) {
+      await Permission.videos.request();
+    }
+    if (await Permission.audio.isDenied) {
+      await Permission.audio.request();
+    }
   }
   
   // Démarrer le scan

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/colors.dart';
 import '../core/network_helper.dart';
 import '../services/tcp_server.dart';
+import '../models/remote_file.dart';
 
 class DesktopScreen extends StatefulWidget {
   const DesktopScreen({super.key});
@@ -22,6 +23,13 @@ class _DesktopScreenState extends State<DesktopScreen> {
   
   // Pour les demandes de fichiers en attente
   final List<FileRequest> _pendingFileRequests = [];
+  
+  // Pour l'explorateur de fichiers
+  bool _showFileBrowser = false;
+  List<RemoteFile> _currentFiles = [];
+  String _currentPath = 'ROOT';
+  bool _loadingFiles = false;
+  String? _connectedClientIP;
   
   @override
   void initState() {
@@ -54,11 +62,16 @@ class _DesktopScreenState extends State<DesktopScreen> {
       case ServerMessageType.clientConnected:
         _addLog('Appareil connecté: ${message.data['ip']}', 
                 LogType.connect, Icons.device_hub);
+        _connectedClientIP = message.data['ip'];
         break;
         
       case ServerMessageType.clientDisconnected:
         _addLog('Appareil déconnecté: ${message.data['ip']}', 
                 LogType.disconnect, Icons.link_off);
+        if (_connectedClientIP == message.data['ip']) {
+          _connectedClientIP = null;
+          _showFileBrowser = false;
+        }
         break;
         
       case ServerMessageType.textMessage:
@@ -105,6 +118,27 @@ class _DesktopScreenState extends State<DesktopScreen> {
         
       case ServerMessageType.fileError:
         _addLog('❌ Erreur fichier: ${message.data['fileName']}', 
+                LogType.error, Icons.error,
+                sender: message.data['from']);
+        break;
+        
+      case ServerMessageType.fileListResponse:
+        // Réponse avec la liste des fichiers
+        final files = message.data['files'] as List<RemoteFile>;
+        setState(() {
+          _currentFiles = files;
+          _loadingFiles = false;
+        });
+        _addLog('📂 ${files.length} éléments reçus', 
+                LogType.file, Icons.folder,
+                sender: message.data['from']);
+        break;
+        
+      case ServerMessageType.fileListError:
+        setState(() {
+          _loadingFiles = false;
+        });
+        _addLog('❌ Erreur liste fichiers: ${message.data['error']}', 
                 LogType.error, Icons.error,
                 sender: message.data['from']);
         break;
@@ -252,6 +286,65 @@ class _DesktopScreenState extends State<DesktopScreen> {
     setState(() => _logs.clear());
   }
   
+  // Ouvrir l'explorateur de fichiers
+  void _openFileBrowser() {
+    if (_connectedClientIP == null) {
+      _addLog('❌ Aucun appareil connecté', LogType.error, Icons.error);
+      return;
+    }
+    
+    setState(() {
+      _showFileBrowser = true;
+      _currentPath = 'ROOT';
+      _loadingFiles = true;
+    });
+    
+    _server.requestRootDirectories(_connectedClientIP!);
+  }
+  
+  // Naviguer dans un dossier
+  void _navigateToDirectory(String path) {
+    if (_connectedClientIP == null) return;
+    
+    setState(() {
+      _currentPath = path;
+      _loadingFiles = true;
+    });
+    
+    _server.requestDirectoryList(_connectedClientIP!, path);
+  }
+  
+  // Retour au dossier parent
+  void _navigateBack() {
+    if (_currentPath == 'ROOT') {
+      setState(() {
+        _showFileBrowser = false;
+      });
+      return;
+    }
+    
+    // Extraire le chemin parent
+    final parts = _currentPath.split('/');
+    if (parts.length > 1) {
+      parts.removeLast();
+      final parentPath = parts.join('/');
+      _navigateToDirectory(parentPath.isEmpty ? 'ROOT' : parentPath);
+    } else {
+      _navigateToDirectory('ROOT');
+    }
+  }
+  
+  // Télécharger un fichier
+  void _downloadFile(RemoteFile file) {
+    if (_connectedClientIP == null) return;
+    
+    _addLog('📥 Demande de téléchargement: ${file.name}', 
+            LogType.file, Icons.download,
+            sender: _connectedClientIP);
+    
+    _server.requestFileDownload(_connectedClientIP!, file.path);
+  }
+  
   @override
   void dispose() {
     _server.dispose();
@@ -266,7 +359,11 @@ class _DesktopScreenState extends State<DesktopScreen> {
       body: Row(
         children: [
           _buildSidebar(),
-          Expanded(child: _buildMainPanel()),
+          Expanded(
+            child: _showFileBrowser 
+                ? _buildFileBrowser() 
+                : _buildMainPanel(),
+          ),
         ],
       ),
     );
@@ -325,6 +422,10 @@ class _DesktopScreenState extends State<DesktopScreen> {
             const SizedBox(height: 24),
             _buildNetworkInfoCard(),
             const SizedBox(height: 24),
+            if (_connectedClientIP != null) ...[
+              _buildFileBrowserButton(),
+              const SizedBox(height: 24),
+            ],
             _buildInstructionsCard(),
             const SizedBox(height: 32),
             _buildVersion(),
@@ -634,6 +735,236 @@ class _DesktopScreenState extends State<DesktopScreen> {
     return '${time.hour.toString().padLeft(2, '0')}:'
            '${time.minute.toString().padLeft(2, '0')}:'
            '${time.second.toString().padLeft(2, '0')}';
+  }
+  
+  // Bouton pour ouvrir l'explorateur de fichiers
+  Widget _buildFileBrowserButton() {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.blue.withOpacity(0.3)),
+      ),
+      color: Colors.blue.withOpacity(0.05),
+      child: InkWell(
+        onTap: _openFileBrowser,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(Icons.folder_open, color: Colors.blue, size: 24),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Explorateur',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Parcourir les fichiers du mobile',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.arrow_forward_ios, size: 16, color: Colors.blue),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  
+  // Explorateur de fichiers
+  Widget _buildFileBrowser() {
+    return Column(
+      children: [
+        _buildFileBrowserHeader(),
+        Expanded(
+          child: _loadingFiles
+              ? Center(child: CircularProgressIndicator())
+              : _currentFiles.isEmpty
+                  ? _buildEmptyFilesState()
+                  : _buildFilesList(),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildFileBrowserHeader() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            icon: Icon(Icons.arrow_back, color: AppColors.primary),
+            onPressed: _navigateBack,
+            tooltip: 'Retour',
+          ),
+          const SizedBox(width: 12),
+          Icon(Icons.folder, color: Colors.orange, size: 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              _currentPath == 'ROOT' ? 'Stockage' : _currentPath.split('/').last,
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.close, color: AppColors.error),
+            onPressed: () {
+              setState(() {
+                _showFileBrowser = false;
+              });
+            },
+            tooltip: 'Fermer',
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildEmptyFilesState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.folder_off, size: 80, color: AppColors.textSecondary.withOpacity(0.3)),
+          const SizedBox(height: 20),
+          Text(
+            'Dossier vide',
+            style: TextStyle(
+              fontSize: 18,
+              color: AppColors.textSecondary.withOpacity(0.6),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildFilesList() {
+    return ListView.builder(
+      padding: const EdgeInsets.all(24),
+      itemCount: _currentFiles.length,
+      itemBuilder: (context, index) {
+        final file = _currentFiles[index];
+        return _buildFileItem(file);
+      },
+    );
+  }
+  
+  Widget _buildFileItem(RemoteFile file) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 4,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: InkWell(
+        onTap: () {
+          if (file.isDirectory) {
+            _navigateToDirectory(file.path);
+          } else {
+            _downloadFile(file);
+          }
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: file.isDirectory
+                      ? Colors.orange.withOpacity(0.1)
+                      : Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  file.isDirectory ? Icons.folder : Icons.insert_drive_file,
+                  size: 24,
+                  color: file.isDirectory ? Colors.orange : Colors.blue,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      file.name,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (!file.isDirectory && file.formattedSize.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        file.formattedSize,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              Icon(
+                file.isDirectory ? Icons.arrow_forward_ios : Icons.download,
+                size: 18,
+                color: AppColors.textSecondary,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

@@ -4,11 +4,14 @@ import 'dart:async';
 import 'dart:typed_data';
 import '../core/constants.dart';
 import '../models/file_transfer.dart';
+import '../models/remote_file.dart';
 import 'file_transfer_service.dart';
+import 'file_browser_service.dart';
 
 // Service client TCP pour la communication mobile → desktop
 class TcpClient {
   final FileTransferService _fileService = FileTransferService();
+  final FileBrowserService _browserService = FileBrowserService();
   Socket? _socket;
   final StreamController<String> _messageController = StreamController.broadcast();
   
@@ -28,7 +31,15 @@ class TcpClient {
       _socket!.listen(
         (data) {
           final message = utf8.decode(data).trim();
-          _messageController.add(message);
+          
+          // Gérer les demandes de liste de fichiers
+          if (message.startsWith('FILE|LIST|')) {
+            _handleFileListRequest(message);
+          } else if (message.startsWith('FILE|DOWNLOAD|')) {
+            _handleFileDownloadRequest(message);
+          } else {
+            _messageController.add(message);
+          }
         },
         onError: (error) {
           print('❌ Erreur socket: $error');
@@ -156,5 +167,69 @@ class TcpClient {
     disconnect();
     _messageController.close();
     _fileService.dispose();
+  }
+  
+  // Gérer une demande de liste de fichiers du PC
+  Future<void> _handleFileListRequest(String message) async {
+    try {
+      // Format: FILE|LIST|path ou FILE|LIST|ROOT
+      final parts = message.split('|');
+      if (parts.length < 3) return;
+      
+      final path = parts[2];
+      List<RemoteFile> files;
+      
+      if (path == 'ROOT') {
+        // Demande des répertoires racines
+        files = await _browserService.getRootDirectories();
+      } else {
+        // Demande d'un répertoire spécifique
+        files = await _browserService.listDirectory(path);
+      }
+      
+      // Convertir en JSON et envoyer
+      final filesJson = files.map((f) => f.toJson()).toList();
+      final response = 'FILE|LIST_RESPONSE|${jsonEncode(filesJson)}\n';
+      
+      _socket?.write(response);
+      await _socket?.flush();
+      
+      print('📂 Liste envoyée: ${files.length} éléments');
+      
+    } catch (e) {
+      print('❌ Erreur _handleFileListRequest: $e');
+      _socket?.write('FILE|LIST_ERROR|$e\n');
+      await _socket?.flush();
+    }
+  }
+  
+  // Gérer une demande de téléchargement de fichier du PC
+  Future<void> _handleFileDownloadRequest(String message) async {
+    try {
+      // Format: FILE|DOWNLOAD|/path/to/file.jpg
+      final parts = message.split('|');
+      if (parts.length < 3) return;
+      
+      final filePath = parts[2];
+      
+      print('📤 Demande de téléchargement: $filePath');
+      
+      // Vérifier que le fichier existe
+      final exists = await _browserService.fileExists(filePath);
+      if (!exists) {
+        print('❌ Fichier inexistant: $filePath');
+        _socket?.write('FILE|DOWNLOAD_ERROR|Fichier inexistant\n');
+        await _socket?.flush();
+        return;
+      }
+      
+      // Envoyer le fichier
+      await sendFile(filePath);
+      
+    } catch (e) {
+      print('❌ Erreur _handleFileDownloadRequest: $e');
+      _socket?.write('FILE|DOWNLOAD_ERROR|$e\n');
+      await _socket?.flush();
+    }
   }
 }
