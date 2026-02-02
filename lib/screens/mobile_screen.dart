@@ -6,6 +6,7 @@ import '../services/network_scanner.dart';
 import '../services/tcp_client.dart';
 import '../models/device.dart';
 import '../models/connection_status.dart';
+import 'permissions_help_screen.dart';
 
 class MobileScreen extends StatefulWidget {
   const MobileScreen({super.key});
@@ -60,21 +61,41 @@ class _MobileScreenState extends State<MobileScreen> {
   
   // Demander les permissions de stockage
   Future<void> _requestPermissions() async {
-    // Demander les permissions de stockage
-    if (await Permission.storage.isDenied) {
-      await Permission.storage.request();
-    }
+    print('🔐 Demande des permissions...');
     
-    // Pour Android 13+ (API 33+)
+    // Pour Android 13+ (API 33+) - Permissions granulaires
     if (await Permission.photos.isDenied) {
-      await Permission.photos.request();
+      final result = await Permission.photos.request();
+      print('📷 Permission photos: $result');
     }
     if (await Permission.videos.isDenied) {
-      await Permission.videos.request();
+      final result = await Permission.videos.request();
+      print('🎥 Permission vidéos: $result');
     }
     if (await Permission.audio.isDenied) {
-      await Permission.audio.request();
+      final result = await Permission.audio.request();
+      print('🎵 Permission audio: $result');
     }
+    
+    // Pour Android 10-12 (API 29-32) - Permission stockage
+    if (await Permission.storage.isDenied) {
+      final result = await Permission.storage.request();
+      print('💾 Permission stockage: $result');
+    }
+    
+    // Pour Android 11+ (API 30+) - Gestion complète du stockage
+    if (await Permission.manageExternalStorage.isDenied) {
+      final result = await Permission.manageExternalStorage.request();
+      print('📂 Permission gestion stockage: $result');
+      
+      if (result.isDenied) {
+        // Informer l'utilisateur
+        print('⚠️ Permission de gestion du stockage refusée');
+        print('💡 Pour un accès complet, active "Autoriser la gestion de tous les fichiers" dans les paramètres');
+      }
+    }
+    
+    print('✅ Demande de permissions terminée');
   }
   
   // Démarrer le scan
@@ -616,6 +637,57 @@ class _MobileScreenState extends State<MobileScreen> {
       children: [
         Text('Actions', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
         const SizedBox(height: 12),
+        
+        // Bouton d'aide pour les permissions
+        Container(
+          margin: const EdgeInsets.only(bottom: 16),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.info.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.info.withOpacity(0.3)),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.info_outline, color: AppColors.info, size: 24),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Explorateur de fichiers',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Le PC peut voir tes fichiers',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              TextButton(
+                onPressed: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const PermissionsHelpScreen(),
+                    ),
+                  );
+                },
+                child: Text('Aide', style: TextStyle(color: AppColors.info)),
+              ),
+            ],
+          ),
+        ),
+        
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
