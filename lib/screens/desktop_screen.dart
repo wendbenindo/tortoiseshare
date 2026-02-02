@@ -1,0 +1,524 @@
+import 'package:flutter/material.dart';
+import '../core/colors.dart';
+import '../core/network_helper.dart';
+import '../services/tcp_server.dart';
+
+class DesktopScreen extends StatefulWidget {
+  const DesktopScreen({super.key});
+
+  @override
+  State<DesktopScreen> createState() => _DesktopScreenState();
+}
+
+class _DesktopScreenState extends State<DesktopScreen> {
+  // Service
+  final TcpServer _server = TcpServer();
+  
+  // État
+  bool _isRunning = false;
+  String? _serverIP;
+  final List<LogEntry> _logs = [];
+  int _messagesReceived = 0;
+  
+  @override
+  void initState() {
+    super.initState();
+    _init();
+  }
+  
+  Future<void> _init() async {
+    _serverIP = await NetworkHelper.getLocalIP();
+    
+    // Écouter les messages du serveur
+    _server.messageStream.listen((message) {
+      _handleServerMessage(message);
+    });
+    
+    setState(() {});
+  }
+  
+  void _handleServerMessage(ServerMessage message) {
+    switch (message.type) {
+      case ServerMessageType.serverStarted:
+        _addLog('Serveur démarré sur le port ${message.data['port']}', 
+                LogType.system, Icons.check_circle);
+        break;
+        
+      case ServerMessageType.serverStopped:
+        _addLog('Serveur arrêté', LogType.system, Icons.stop_circle);
+        break;
+        
+      case ServerMessageType.clientConnected:
+        _addLog('Appareil connecté: ${message.data['ip']}', 
+                LogType.connect, Icons.device_hub);
+        break;
+        
+      case ServerMessageType.clientDisconnected:
+        _addLog('Appareil déconnecté: ${message.data['ip']}', 
+                LogType.disconnect, Icons.link_off);
+        break;
+        
+      case ServerMessageType.textMessage:
+        _messagesReceived++;
+        _addLog(message.data['text'], LogType.message, Icons.message, 
+                sender: message.data['from']);
+        break;
+        
+      case ServerMessageType.screenRequest:
+        _addLog('Demande de partage d\'écran', LogType.screen, Icons.screen_share,
+                sender: message.data['from']);
+        break;
+        
+      case ServerMessageType.mobileConnected:
+        _addLog('Connexion mobile établie', LogType.mobile, Icons.smartphone,
+                sender: message.data['from']);
+        break;
+        
+      case ServerMessageType.alert:
+        _addLog('Alerte: ${message.data['alertType']}', LogType.alert, Icons.notifications,
+                sender: message.data['from']);
+        break;
+    }
+  }
+  
+  void _addLog(String message, LogType type, IconData icon, {String? sender}) {
+    setState(() {
+      _logs.insert(0, LogEntry(
+        message: message,
+        type: type,
+        icon: icon,
+        sender: sender,
+        timestamp: DateTime.now(),
+      ));
+      
+      if (_logs.length > 50) {
+        _logs.removeLast();
+      }
+    });
+  }
+  
+  Future<void> _toggleServer() async {
+    if (_isRunning) {
+      await _server.stopServer();
+      setState(() => _isRunning = false);
+    } else {
+      final success = await _server.startServer();
+      setState(() => _isRunning = success);
+    }
+  }
+  
+  void _clearLogs() {
+    setState(() => _logs.clear());
+  }
+  
+  @override
+  void dispose() {
+    _server.dispose();
+    super.dispose();
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: _buildAppBar(),
+      body: Row(
+        children: [
+          _buildSidebar(),
+          Expanded(child: _buildMainPanel()),
+        ],
+      ),
+    );
+  }
+  
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      title: Row(
+        children: [
+          Icon(Icons.sensors, color: Colors.white, size: 28),
+          const SizedBox(width: 12),
+          Text(
+            'TortoiseShare Desktop',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 22,
+            ),
+          ),
+        ],
+      ),
+      backgroundColor: AppColors.primary,
+      elevation: 2,
+      actions: [
+        if (_logs.isNotEmpty)
+          IconButton(
+            icon: Icon(Icons.delete_sweep, color: Colors.white),
+            onPressed: _clearLogs,
+            tooltip: 'Effacer les logs',
+          ),
+      ],
+    );
+  }
+  
+  Widget _buildSidebar() {
+    return Container(
+      width: 320,
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            spreadRadius: 2,
+          ),
+        ],
+      ),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildHeader(),
+            const SizedBox(height: 32),
+            _buildServerStatusCard(),
+            const SizedBox(height: 24),
+            _buildNetworkInfoCard(),
+            const SizedBox(height: 24),
+            _buildInstructionsCard(),
+            const SizedBox(height: 32),
+            _buildVersion(),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildHeader() {
+    return Column(
+      children: [
+        Container(
+          width: 80,
+          height: 80,
+          decoration: BoxDecoration(
+            color: AppColors.primary.withOpacity(0.1),
+            shape: BoxShape.circle,
+            border: Border.all(color: AppColors.primary.withOpacity(0.3), width: 2),
+          ),
+          child: Icon(Icons.desktop_windows, size: 40, color: AppColors.primary),
+        ),
+        const SizedBox(height: 16),
+        Text('TortoiseShare', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+        Text('Desktop', style: TextStyle(fontSize: 16, color: AppColors.textSecondary)),
+      ],
+    );
+  }
+  
+  Widget _buildServerStatusCard() {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: _isRunning ? AppColors.success.withOpacity(0.3) : Colors.grey.withOpacity(0.2),
+        ),
+      ),
+      color: _isRunning ? AppColors.success.withOpacity(0.05) : Colors.grey.withOpacity(0.05),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: _isRunning ? AppColors.success : Colors.grey,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    _isRunning ? '✅ Communication autorisée' : 'Communication désactivée',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: _isRunning ? AppColors.success : Colors.grey,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _toggleServer,
+                icon: Icon(_isRunning ? Icons.stop : Icons.play_arrow, color: Colors.white),
+                label: Text(
+                  _isRunning ? 'DÉSACTIVER' : 'AUTORISER LA COMMUNICATION',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _isRunning ? AppColors.error : AppColors.primary,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildNetworkInfoCard() {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: AppColors.info.withOpacity(0.2)),
+      ),
+      color: AppColors.info.withOpacity(0.05),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.info, color: AppColors.info, size: 20),
+                const SizedBox(width: 8),
+                Text('INFORMATIONS RÉSEAU', 
+                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, 
+                                    color: AppColors.info, letterSpacing: 1)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (_serverIP != null) ...[
+              _buildInfoRow('Adresse IP', _serverIP!, Icons.network_check),
+              const SizedBox(height: 8),
+            ],
+            _buildInfoRow('Port', '8081', Icons.adjust),
+            const SizedBox(height: 8),
+            _buildInfoRow('Appareils connectés', '${_server.connectedDevices.length}', Icons.device_hub),
+            const SizedBox(height: 8),
+            _buildInfoRow('Messages reçus', '$_messagesReceived', Icons.message),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildInfoRow(String label, String value, IconData icon) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: AppColors.textSecondary),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(label, style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+        ),
+        Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+      ],
+    );
+  }
+  
+  Widget _buildInstructionsCard() {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: AppColors.accent.withOpacity(0.2)),
+      ),
+      color: AppColors.accent.withOpacity(0.05),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.help, color: AppColors.accent, size: 20),
+                const SizedBox(width: 8),
+                Text('INSTRUCTIONS', 
+                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, 
+                                    color: AppColors.accent, letterSpacing: 1)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '1. Cliquez sur "Autoriser la communication"\n'
+              '2. Ouvrez l\'app mobile sur le même réseau WiFi\n'
+              '3. L\'app mobile détectera automatiquement ce PC\n'
+              '4. Les connexions apparaîtront ici',
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.6),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildVersion() {
+    return Text(
+      'Version 1.0.0 • TortoiseShare',
+      textAlign: TextAlign.center,
+      style: TextStyle(fontSize: 12, color: AppColors.textSecondary.withOpacity(0.6)),
+    );
+  }
+  
+  Widget _buildMainPanel() {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('ACTIVITÉ EN TEMPS RÉEL', 
+                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, 
+                                  color: AppColors.textSecondary, letterSpacing: 1)),
+              if (_logs.isNotEmpty)
+                Text('${_logs.length} événements', 
+                     style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: _logs.isEmpty ? _buildEmptyState() : _buildLogsList(),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.history, size: 80, color: AppColors.textSecondary.withOpacity(0.3)),
+          const SizedBox(height: 20),
+          Text('Aucune activité', 
+               style: TextStyle(fontSize: 18, color: AppColors.textSecondary.withOpacity(0.6), 
+                              fontWeight: FontWeight.w500)),
+          const SizedBox(height: 12),
+          Text('Les connexions et messages\napparaîtront ici', 
+               textAlign: TextAlign.center,
+               style: TextStyle(fontSize: 14, color: AppColors.textSecondary.withOpacity(0.5))),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildLogsList() {
+    return ListView.builder(
+      reverse: true,
+      itemCount: _logs.length,
+      itemBuilder: (context, index) => _buildLogItem(_logs[index]),
+    );
+  }
+  
+  Widget _buildLogItem(LogEntry log) {
+    final color = _getLogColor(log.type);
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 4, spreadRadius: 1),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(log.icon, size: 20, color: color),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(child: Text(log.message, style: TextStyle(fontSize: 14))),
+                      Text(_formatTime(log.timestamp), 
+                           style: TextStyle(fontSize: 11, color: AppColors.textSecondary.withOpacity(0.6))),
+                    ],
+                  ),
+                  if (log.sender != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text('De: ${log.sender}', 
+                                 style: TextStyle(fontSize: 12, color: AppColors.textSecondary, 
+                                                fontStyle: FontStyle.italic)),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Color _getLogColor(LogType type) {
+    switch (type) {
+      case LogType.system: return AppColors.info;
+      case LogType.connect: return AppColors.success;
+      case LogType.disconnect: return AppColors.warning;
+      case LogType.message: return AppColors.primary;
+      case LogType.screen: return Colors.purple;
+      case LogType.mobile: return Colors.cyan;
+      case LogType.alert: return AppColors.warning;
+      case LogType.error: return AppColors.error;
+    }
+  }
+  
+  String _formatTime(DateTime time) {
+    return '${time.hour.toString().padLeft(2, '0')}:'
+           '${time.minute.toString().padLeft(2, '0')}:'
+           '${time.second.toString().padLeft(2, '0')}';
+  }
+}
+
+// Entrée de log
+class LogEntry {
+  final String message;
+  final LogType type;
+  final IconData icon;
+  final String? sender;
+  final DateTime timestamp;
+  
+  LogEntry({
+    required this.message,
+    required this.type,
+    required this.icon,
+    this.sender,
+    required this.timestamp,
+  });
+}
+
+enum LogType {
+  system,
+  connect,
+  disconnect,
+  message,
+  screen,
+  mobile,
+  alert,
+  error,
+}

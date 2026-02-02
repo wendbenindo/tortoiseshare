@@ -1,0 +1,548 @@
+import 'package:flutter/material.dart';
+import '../core/colors.dart';
+import '../services/network_scanner.dart';
+import '../services/tcp_client.dart';
+import '../models/device.dart';
+import '../models/connection_status.dart';
+
+class MobileScreen extends StatefulWidget {
+  const MobileScreen({super.key});
+
+  @override
+  State<MobileScreen> createState() => _MobileScreenState();
+}
+
+class _MobileScreenState extends State<MobileScreen> {
+  // Services
+  final NetworkScanner _scanner = NetworkScanner();
+  final TcpClient _client = TcpClient();
+  
+  // État
+  AppConnectionState _connectionState = AppConnectionState.idle();
+  final List<Device> _foundDevices = [];
+  Device? _connectedDevice;
+  String _pcName = 'PC TortoiseShare';
+  int _scanProgress = 0;
+  int _totalScans = 0;
+  
+  // Controllers
+  final TextEditingController _messageController = TextEditingController();
+  
+  @override
+  void initState() {
+    super.initState();
+    
+    // Écouter les messages du serveur
+    _client.messageStream.listen((message) {
+      _handleServerMessage(message);
+    });
+    
+    // Écouter la progression du scan
+    _scanner.onProgress = (current, total) {
+      if (mounted) {
+        setState(() {
+          _scanProgress = current;
+          _totalScans = total;
+        });
+      }
+    };
+  }
+  
+  // Démarrer le scan
+  Future<void> _startScan() async {
+    if (_connectionState.isScanning || _connectionState.isConnected) return;
+    
+    setState(() {
+      _connectionState = AppConnectionState.scanning('🔍 Recherche en cours...');
+      _foundDevices.clear();
+      _scanProgress = 0;
+      _totalScans = 0;
+    });
+    
+    await for (final device in _scanner.scanNetwork()) {
+      if (mounted && !_foundDevices.any((d) => d.id == device.id)) {
+        setState(() {
+          _foundDevices.add(device);
+        });
+      }
+    }
+    
+    if (mounted) {
+      setState(() {
+        _connectionState = _foundDevices.isEmpty
+            ? AppConnectionState.error('Aucun PC trouvé')
+            : AppConnectionState(
+                status: ConnectionStatus.idle,
+                message: '✅ ${_foundDevices.length} PC trouvé(s)',
+              );
+      });
+    }
+  }
+  
+  // Connecter à un appareil
+  Future<void> _connectToDevice(Device device) async {
+    setState(() {
+      _connectionState = AppConnectionState(
+        status: ConnectionStatus.connecting,
+        message: '🔄 Connexion en cours...',
+      );
+    });
+    
+    final success = await _client.connect(device.ipAddress);
+    
+    if (mounted) {
+      setState(() {
+        if (success) {
+          _connectedDevice = device;
+          _connectionState = AppConnectionState.connected(device.name);
+        } else {
+          _connectionState = AppConnectionState.error('Connexion échouée');
+        }
+      });
+      
+      if (success) {
+        _showSnackBar('Connexion établie', AppColors.success);
+      } else {
+        _showSnackBar('Erreur de connexion', AppColors.error);
+      }
+    }
+  }
+  
+  // Gérer les messages du serveur
+  void _handleServerMessage(String message) {
+    print('📨 Serveur: $message');
+    
+    if (message.startsWith('SERVER|NAME|')) {
+      final name = message.substring(12);
+      setState(() {
+        _pcName = name.isNotEmpty ? name : 'PC TortoiseShare';
+      });
+      _showSnackBar('Connecté à $_pcName', AppColors.success);
+    }
+  }
+  
+  // Envoyer un message
+  Future<void> _sendMessage() async {
+    if (_messageController.text.isEmpty) return;
+    
+    final message = _messageController.text;
+    final success = await _client.sendMessage(message);
+    
+    if (success) {
+      _messageController.clear();
+      _showSnackBar('Message envoyé', AppColors.primary);
+      FocusScope.of(context).unfocus();
+    } else {
+      _showSnackBar('Erreur d\'envoi', AppColors.error);
+    }
+  }
+  
+  // Déconnecter
+  Future<void> _disconnect() async {
+    await _client.disconnect();
+    setState(() {
+      _connectedDevice = null;
+      _connectionState = AppConnectionState.idle();
+      _foundDevices.clear();
+    });
+    _showSnackBar('Déconnecté', AppColors.warning);
+  }
+  
+  void _showSnackBar(String message, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: color,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+  
+  @override
+  void dispose() {
+    _scanner.stopScan();
+    _client.dispose();
+    _messageController.dispose();
+    super.dispose();
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: _buildAppBar(),
+      body: _connectionState.isConnected 
+          ? _buildConnectedView() 
+          : _buildScanView(),
+    );
+  }
+  
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      title: Row(
+        children: [
+          Icon(Icons.sensors, color: Colors.white, size: 24),
+          const SizedBox(width: 10),
+          Text(
+            'TortoiseShare',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 20,
+            ),
+          ),
+        ],
+      ),
+      backgroundColor: AppColors.primary,
+      elevation: 0,
+      actions: [
+        if (_connectionState.isScanning)
+          IconButton(
+            icon: Icon(Icons.stop, color: Colors.white),
+            onPressed: () {
+              _scanner.stopScan();
+              setState(() {
+                _connectionState = AppConnectionState(
+                  status: ConnectionStatus.idle,
+                  message: 'Scan annulé',
+                );
+              });
+            },
+            tooltip: 'Arrêter',
+          ),
+        if (_foundDevices.isNotEmpty && !_connectionState.isConnected)
+          IconButton(
+            icon: Icon(Icons.clear_all, color: Colors.white),
+            onPressed: () {
+              setState(() {
+                _foundDevices.clear();
+                _connectionState = AppConnectionState.idle();
+              });
+            },
+            tooltip: 'Effacer',
+          ),
+      ],
+    );
+  }
+  
+  Widget _buildScanView() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildHeader(),
+          const SizedBox(height: 24),
+          _buildScanButton(),
+          const SizedBox(height: 20),
+          if (_connectionState.isScanning || _foundDevices.isNotEmpty)
+            _buildStatusCard(),
+          const SizedBox(height: 20),
+          if (_foundDevices.isNotEmpty) _buildDeviceList(),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildHeader() {
+    return Card(
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.sensors, size: 40, color: AppColors.primary),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'TortoiseShare Mobile',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Connexion PC simplifiée',
+              style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildScanButton() {
+    return ElevatedButton.icon(
+      onPressed: _connectionState.isScanning ? null : _startScan,
+      icon: Icon(
+        _connectionState.isScanning ? Icons.hourglass_top : Icons.search,
+        color: Colors.white,
+      ),
+      label: Text(
+        _connectionState.isScanning ? 'Recherche...' : '🔍 Rechercher un PC',
+        style: TextStyle(fontSize: 16, color: Colors.white),
+      ),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: AppColors.primary,
+        padding: const EdgeInsets.symmetric(vertical: 18),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      ),
+    );
+  }
+  
+  Widget _buildStatusCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Statut', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 12),
+            if (_connectionState.isScanning) ...[
+              Row(
+                children: [
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(_connectionState.message),
+                        if (_totalScans > 0)
+                          Text('$_scanProgress/$_totalScans adresses', 
+                               style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              if (_totalScans > 0) ...[
+                const SizedBox(height: 12),
+                LinearProgressIndicator(
+                  value: _scanProgress / _totalScans,
+                  color: AppColors.primary,
+                ),
+              ],
+            ] else
+              Text(_connectionState.message, style: TextStyle(fontSize: 16)),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildDeviceList() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('PC DISPONIBLES', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                Text('${_foundDevices.length} trouvé(s)', 
+                     style: TextStyle(fontSize: 12, color: AppColors.primary)),
+              ],
+            ),
+            const SizedBox(height: 16),
+            ..._foundDevices.map((device) => _buildDeviceItem(device)).toList(),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildDeviceItem(Device device) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundLight,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.primary.withOpacity(0.1)),
+      ),
+      child: ListTile(
+        leading: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: AppColors.primary.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(Icons.desktop_windows, color: AppColors.primary, size: 20),
+        ),
+        title: Text(device.name, style: TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: Text('IP: ${device.ipAddress}', style: TextStyle(fontSize: 12)),
+        trailing: Icon(Icons.arrow_forward_ios, color: AppColors.primary, size: 16),
+        onTap: () => _connectToDevice(device),
+      ),
+    );
+  }
+  
+  Widget _buildConnectedView() {
+    return Column(
+      children: [
+        _buildConnectionHeader(),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                _buildMessageCard(),
+                const SizedBox(height: 20),
+                _buildActionsSection(),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildConnectionHeader() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.primary,
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(20),
+          bottomRight: Radius.circular(20),
+        ),
+      ),
+      child: SafeArea(
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(Icons.desktop_windows, color: Colors.white, size: 28),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Connecté à', style: TextStyle(fontSize: 12, color: Colors.white70)),
+                      Text(_pcName, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+                      Text(_connectedDevice?.ipAddress ?? '', style: TextStyle(fontSize: 12, color: Colors.white70)),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(Icons.link_off, color: Colors.white),
+                  onPressed: _disconnect,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildMessageCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Message', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _messageController,
+              maxLines: 3,
+              decoration: InputDecoration(
+                hintText: 'Tapez votre message...',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: AppColors.background,
+              ),
+              onSubmitted: (_) => _sendMessage(),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _sendMessage,
+              icon: Icon(Icons.send, size: 20),
+              label: Text('Envoyer'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 50),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildActionsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Actions', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            _buildActionButton(Icons.screen_share, 'Écran', () async {
+              await _client.requestScreenShare();
+              _showSnackBar('Demande envoyée', AppColors.info);
+            }),
+            _buildActionButton(Icons.file_upload, 'Fichier', () {
+              _showSnackBar('Bientôt disponible', AppColors.info);
+            }),
+            _buildActionButton(Icons.notifications, 'Alerte', () async {
+              await _client.sendAlert('PING');
+              _showSnackBar('Alerte envoyée', AppColors.warning);
+            }),
+          ],
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildActionButton(IconData icon, String label, VoidCallback onTap) {
+    return Column(
+      children: [
+        Container(
+          width: 60,
+          height: 60,
+          decoration: BoxDecoration(
+            color: AppColors.primary.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(15),
+          ),
+          child: IconButton(
+            icon: Icon(icon, color: AppColors.primary, size: 28),
+            onPressed: onTap,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(label, style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+      ],
+    );
+  }
+}
