@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import '../core/colors.dart';
 import '../services/network_scanner.dart';
 import '../services/tcp_client.dart';
@@ -24,6 +25,11 @@ class _MobileScreenState extends State<MobileScreen> {
   String _pcName = 'PC TortoiseShare';
   int _scanProgress = 0;
   int _totalScans = 0;
+  
+  // Pour le transfert de fichiers
+  bool _isTransferring = false;
+  double _transferProgress = 0.0;
+  String? _currentFileName;
   
   // Controllers
   final TextEditingController _messageController = TextEditingController();
@@ -146,6 +152,64 @@ class _MobileScreenState extends State<MobileScreen> {
       _foundDevices.clear();
     });
     _showSnackBar('Déconnecté', AppColors.warning);
+  }
+  
+  // Choisir et envoyer un fichier
+  Future<void> _pickAndSendFile() async {
+    try {
+      // 1. Choisir un fichier
+      final result = await FilePicker.platform.pickFiles();
+      
+      if (result == null || result.files.isEmpty) {
+        _showSnackBar('Aucun fichier sélectionné', AppColors.warning);
+        return;
+      }
+      
+      final file = result.files.first;
+      final filePath = file.path;
+      
+      if (filePath == null) {
+        _showSnackBar('Erreur: chemin du fichier invalide', AppColors.error);
+        return;
+      }
+      
+      // 2. Afficher la progression
+      setState(() {
+        _isTransferring = true;
+        _transferProgress = 0.0;
+        _currentFileName = file.name;
+      });
+      
+      _showSnackBar('Envoi de ${file.name}...', AppColors.info);
+      
+      // 3. Envoyer le fichier
+      final success = await _client.sendFile(
+        filePath,
+        onProgress: (progress) {
+          setState(() {
+            _transferProgress = progress;
+          });
+        },
+      );
+      
+      // 4. Afficher le résultat
+      setState(() {
+        _isTransferring = false;
+      });
+      
+      if (success) {
+        _showSnackBar('✅ Fichier envoyé avec succès !', AppColors.success);
+      } else {
+        _showSnackBar('❌ Erreur lors de l\'envoi', AppColors.error);
+      }
+      
+    } catch (e) {
+      setState(() {
+        _isTransferring = false;
+      });
+      _showSnackBar('Erreur: $e', AppColors.error);
+      print('❌ Erreur sélection fichier: $e');
+    }
   }
   
   void _showSnackBar(String message, Color color) {
@@ -471,6 +535,24 @@ class _MobileScreenState extends State<MobileScreen> {
           children: [
             Text('Message', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 12),
+            
+            // Afficher la progression du transfert si en cours
+            if (_isTransferring) ...[
+              Text('📤 Envoi: $_currentFileName', 
+                   style: TextStyle(fontSize: 14, color: AppColors.primary)),
+              const SizedBox(height: 8),
+              LinearProgressIndicator(
+                value: _transferProgress,
+                backgroundColor: AppColors.background,
+                color: AppColors.primary,
+                minHeight: 8,
+              ),
+              const SizedBox(height: 4),
+              Text('${(_transferProgress * 100).toStringAsFixed(0)}%',
+                   style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+              const SizedBox(height: 16),
+            ],
+            
             TextField(
               controller: _messageController,
               maxLines: 3,
@@ -513,7 +595,7 @@ class _MobileScreenState extends State<MobileScreen> {
               _showSnackBar('Demande envoyée', AppColors.info);
             }),
             _buildActionButton(Icons.file_upload, 'Fichier', () {
-              _showSnackBar('Bientôt disponible', AppColors.info);
+              _pickAndSendFile();
             }),
             _buildActionButton(Icons.notifications, 'Alerte', () async {
               await _client.sendAlert('PING');

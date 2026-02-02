@@ -78,7 +78,44 @@ class _DesktopScreenState extends State<DesktopScreen> {
         _addLog('Alerte: ${message.data['alertType']}', LogType.alert, Icons.notifications,
                 sender: message.data['from']);
         break;
+        
+      case ServerMessageType.fileStart:
+        _addLog('📥 Réception: ${message.data['fileName']} (${_formatBytes(message.data['fileSize'])})', 
+                LogType.file, Icons.file_download,
+                sender: message.data['from']);
+        break;
+        
+      case ServerMessageType.fileProgress:
+        final progress = (message.data['progress'] * 100).toStringAsFixed(0);
+        _addLog('📊 Progression: ${message.data['fileName']} - $progress%', 
+                LogType.file, Icons.downloading,
+                sender: message.data['from']);
+        break;
+        
+      case ServerMessageType.fileComplete:
+        _addLog('✅ Fichier reçu: ${message.data['fileName']}', 
+                LogType.file, Icons.check_circle,
+                sender: message.data['from']);
+        _showNotification('Fichier reçu: ${message.data['fileName']}');
+        break;
+        
+      case ServerMessageType.fileError:
+        _addLog('❌ Erreur fichier: ${message.data['fileName']}', 
+                LogType.error, Icons.error,
+                sender: message.data['from']);
+        break;
     }
+  }
+  
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+  
+  void _showNotification(String message) {
+    // TODO: Ajouter une vraie notification système
+    print('🔔 Notification: $message');
   }
   
   void _addLog(String message, LogType type, IconData icon, {String? sender}) {
@@ -484,6 +521,7 @@ class _DesktopScreenState extends State<DesktopScreen> {
       case LogType.screen: return Colors.purple;
       case LogType.mobile: return Colors.cyan;
       case LogType.alert: return AppColors.warning;
+      case LogType.file: return Colors.orange;
       case LogType.error: return AppColors.error;
     }
   }
@@ -520,5 +558,6 @@ enum LogType {
   screen,
   mobile,
   alert,
+  file,      // Nouveau
   error,
 }
