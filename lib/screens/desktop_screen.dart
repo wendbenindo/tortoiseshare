@@ -876,10 +876,20 @@ class _DesktopScreenState extends State<DesktopScreen> {
         _buildFileBrowserHeader(),
         Expanded(
           child: _loadingFiles
-              ? Center(child: CircularProgressIndicator())
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(),
+                      const SizedBox(height: 16),
+                      Text('Chargement...', 
+                           style: TextStyle(color: AppColors.textSecondary)),
+                    ],
+                  ),
+                )
               : _currentFiles.isEmpty
                   ? _buildEmptyFilesState()
-                  : _buildFilesList(),
+                  : _buildFilesGrid(),
         ),
       ],
     );
@@ -887,16 +897,12 @@ class _DesktopScreenState extends State<DesktopScreen> {
   
   Widget _buildFileBrowserHeader() {
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
         color: AppColors.card,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 4,
-            spreadRadius: 1,
-          ),
-        ],
+        border: Border(
+          bottom: BorderSide(color: Colors.grey.withOpacity(0.2)),
+        ),
       ),
       child: Row(
         children: [
@@ -906,19 +912,19 @@ class _DesktopScreenState extends State<DesktopScreen> {
             tooltip: 'Retour',
           ),
           const SizedBox(width: 12),
-          Icon(Icons.folder, color: Colors.orange, size: 24),
+          Icon(Icons.folder, color: Colors.orange, size: 20),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
               _currentPath == 'ROOT' ? 'Stockage' : _currentPath.split('/').last,
               style: TextStyle(
-                fontSize: 20,
+                fontSize: 18,
                 fontWeight: FontWeight.w600,
               ),
             ),
           ),
           IconButton(
-            icon: Icon(Icons.close, color: AppColors.error),
+            icon: Icon(Icons.close, color: AppColors.textSecondary),
             onPressed: () {
               setState(() {
                 _showFileBrowser = false;
@@ -936,13 +942,13 @@ class _DesktopScreenState extends State<DesktopScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.folder_off, size: 80, color: AppColors.textSecondary.withOpacity(0.3)),
-          const SizedBox(height: 20),
+          Icon(Icons.folder_off, size: 64, color: Colors.grey.withOpacity(0.3)),
+          const SizedBox(height: 16),
           Text(
             'Dossier vide',
             style: TextStyle(
-              fontSize: 18,
-              color: AppColors.textSecondary.withOpacity(0.6),
+              fontSize: 16,
+              color: Colors.grey.withOpacity(0.6),
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -951,30 +957,32 @@ class _DesktopScreenState extends State<DesktopScreen> {
     );
   }
   
-  Widget _buildFilesList() {
-    return ListView.builder(
-      padding: const EdgeInsets.all(24),
+  // Affichage en grille pour les fichiers
+  Widget _buildFilesGrid() {
+    return GridView.builder(
+      padding: const EdgeInsets.all(20),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 4,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+        childAspectRatio: 0.85,
+      ),
       itemCount: _currentFiles.length,
       itemBuilder: (context, index) {
         final file = _currentFiles[index];
-        return _buildFileItem(file);
+        return _buildFileCard(file);
       },
     );
   }
   
-  Widget _buildFileItem(RemoteFile file) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: AppColors.card,
+  Widget _buildFileCard(RemoteFile file) {
+    final isImage = _isImageFile(file.name);
+    
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 4,
-            spreadRadius: 1,
-          ),
-        ],
+        side: BorderSide(color: Colors.grey.withOpacity(0.2)),
       ),
       child: InkWell(
         onTap: () {
@@ -985,61 +993,125 @@ class _DesktopScreenState extends State<DesktopScreen> {
           }
         },
         borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Thumbnail ou icône
+            Expanded(
+              child: Container(
                 decoration: BoxDecoration(
                   color: file.isDirectory
                       ? Colors.orange.withOpacity(0.1)
-                      : Colors.blue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
+                      : isImage
+                          ? Colors.grey.withOpacity(0.1)
+                          : Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
                 ),
-                child: Icon(
-                  file.isDirectory ? Icons.folder : Icons.insert_drive_file,
-                  size: 24,
-                  color: file.isDirectory ? Colors.orange : Colors.blue,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      file.name,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (!file.isDirectory && file.formattedSize.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        file.formattedSize,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textSecondary,
+                child: isImage && !file.isDirectory
+                    ? _buildImageThumbnail(file)
+                    : Center(
+                        child: Icon(
+                          file.isDirectory ? Icons.folder : _getFileIcon(file.name),
+                          size: 48,
+                          color: file.isDirectory ? Colors.orange : Colors.blue,
                         ),
                       ),
-                    ],
+              ),
+            ),
+            // Nom et taille
+            Container(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    file.name,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (!file.isDirectory && file.formattedSize.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      file.formattedSize,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
                   ],
-                ),
+                ],
               ),
-              Icon(
-                file.isDirectory ? Icons.arrow_forward_ios : Icons.download,
-                size: 18,
-                color: AppColors.textSecondary,
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
+    );
+  }
+  
+  // Vérifier si c'est une image
+  bool _isImageFile(String fileName) {
+    final ext = fileName.toLowerCase().split('.').last;
+    return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].contains(ext);
+  }
+  
+  // Obtenir l'icône selon le type de fichier
+  IconData _getFileIcon(String fileName) {
+    final ext = fileName.toLowerCase().split('.').last;
+    
+    if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].contains(ext)) {
+      return Icons.image;
+    } else if (['mp4', 'avi', 'mkv', 'mov'].contains(ext)) {
+      return Icons.video_file;
+    } else if (['mp3', 'wav', 'flac', 'm4a'].contains(ext)) {
+      return Icons.audio_file;
+    } else if (['pdf'].contains(ext)) {
+      return Icons.picture_as_pdf;
+    } else if (['doc', 'docx', 'txt'].contains(ext)) {
+      return Icons.description;
+    } else if (['zip', 'rar', '7z'].contains(ext)) {
+      return Icons.folder_zip;
+    } else {
+      return Icons.insert_drive_file;
+    }
+  }
+  
+  // Afficher une miniature de l'image
+  Widget _buildImageThumbnail(RemoteFile file) {
+    // Pour l'instant, on affiche juste une icône image stylisée
+    // Plus tard, on pourra charger la vraie miniature depuis le mobile
+    return Stack(
+      children: [
+        Center(
+          child: Icon(
+            Icons.image,
+            size: 64,
+            color: Colors.blue.withOpacity(0.3),
+          ),
+        ),
+        Positioned(
+          top: 8,
+          right: 8,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.blue,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              file.name.split('.').last.toUpperCase(),
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
