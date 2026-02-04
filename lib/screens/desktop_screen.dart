@@ -524,7 +524,7 @@ class _DesktopScreenState extends State<DesktopScreen> {
   
   Widget _buildSidebar() {
     return Container(
-      width: 320,
+      width: 280,
       decoration: BoxDecoration(
         color: AppColors.card,
         boxShadow: [
@@ -535,165 +535,151 @@ class _DesktopScreenState extends State<DesktopScreen> {
           ),
         ],
       ),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildHeader(),
-            const SizedBox(height: 32),
-            _buildServerStatusCard(),
-            const SizedBox(height: 24),
-            _buildNetworkInfoCard(),
-            const SizedBox(height: 24),
-            if (_connectedClientIP != null) ...[
-              _buildFileBrowserButton(),
-              const SizedBox(height: 24),
-            ],
-            _buildInstructionsCard(),
-            const SizedBox(height: 32),
-            _buildVersion(),
-          ],
-        ),
-      ),
-    );
-  }
-  
-  Widget _buildHeader() {
-    return Column(
-      children: [
-        Container(
-          width: 80,
-          height: 80,
-          decoration: BoxDecoration(
-            color: AppColors.primary.withOpacity(0.1),
-            shape: BoxShape.circle,
-            border: Border.all(color: AppColors.primary.withOpacity(0.3), width: 2),
-          ),
-          child: Icon(Icons.desktop_windows, size: 40, color: AppColors.primary),
-        ),
-        const SizedBox(height: 16),
-        Text('TortoiseShare', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-        Text('Desktop', style: TextStyle(fontSize: 16, color: AppColors.textSecondary)),
-      ],
-    );
-  }
-  
-  Widget _buildServerStatusCard() {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: _isRunning ? AppColors.success.withOpacity(0.3) : Colors.grey.withOpacity(0.2),
-        ),
-      ),
-      color: _isRunning ? AppColors.success.withOpacity(0.05) : Colors.grey.withOpacity(0.05),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            Row(
+      child: Column(
+        children: [
+          // Header compact
+          Container(
+            padding: const EdgeInsets.all(24),
+            child: Column(
               children: [
-                Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    color: _isRunning ? AppColors.success : Colors.grey,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 12),
+                Icon(Icons.desktop_windows, size: 48, color: AppColors.primary),
+                const SizedBox(height: 12),
+                Text('TortoiseShare', 
+                     style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                Text('Desktop', 
+                     style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+              ],
+            ),
+          ),
+          
+          Divider(height: 1, color: Colors.grey.withOpacity(0.2)),
+          
+          // Toggle simple pour activer/désactiver
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
                 Expanded(
                   child: Text(
-                    _isRunning ? '✅ Communication autorisée' : 'Communication désactivée',
+                    _isRunning ? 'Détection active' : 'Détection désactivée',
                     style: TextStyle(
-                      fontSize: 16,
+                      fontSize: 15,
                       fontWeight: FontWeight.w600,
                       color: _isRunning ? AppColors.success : Colors.grey,
                     ),
                   ),
                 ),
+                Switch(
+                  value: _isRunning,
+                  onChanged: (value) => _toggleServer(),
+                  activeColor: AppColors.success,
+                ),
               ],
             ),
+          ),
+          
+          // Infos réseau compactes
+          if (_isRunning) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.background,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_serverIP != null)
+                      _buildCompactInfo(Icons.wifi, _serverIP!),
+                    const SizedBox(height: 8),
+                    _buildCompactInfo(Icons.device_hub, 
+                        '${_server.connectedDevices.length} appareil(s)'),
+                  ],
+                ),
+              ),
+            ),
+          ],
+          
+          // Bouton explorateur (si connecté)
+          if (_connectedClientIP != null) ...[
             const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
               child: ElevatedButton.icon(
-                onPressed: _toggleServer,
-                icon: Icon(_isRunning ? Icons.stop : Icons.play_arrow, color: Colors.white),
-                label: Text(
-                  _isRunning ? 'DÉSACTIVER' : 'AUTORISER LA COMMUNICATION',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                ),
+                onPressed: _openFileBrowser,
+                icon: Icon(Icons.folder_open, color: Colors.white),
+                label: Text('Explorateur', style: TextStyle(color: Colors.white)),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: _isRunning ? AppColors.error : AppColors.primary,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  backgroundColor: AppColors.primary,
+                  minimumSize: Size(double.infinity, 48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-  
-  Widget _buildNetworkInfoCard() {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: AppColors.info.withOpacity(0.2)),
-      ),
-      color: AppColors.info.withOpacity(0.05),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.info, color: AppColors.info, size: 20),
-                const SizedBox(width: 8),
-                Text('INFORMATIONS RÉSEAU', 
-                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, 
-                                    color: AppColors.info, letterSpacing: 1)),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (_serverIP != null) ...[
-              _buildInfoRow('Adresse IP', _serverIP!, Icons.network_check),
-              const SizedBox(height: 8),
-            ],
-            _buildInfoRow('Port', '8081', Icons.adjust),
-            const SizedBox(height: 8),
-            _buildInfoRow('Appareils connectés', '${_server.connectedDevices.length}', Icons.device_hub),
-            
-            // Afficher la file d'attente de téléchargements
-            if (_downloadQueue.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              Divider(color: AppColors.primary.withOpacity(0.3)),
-              const SizedBox(height: 12),
-              Text(
-                'TÉLÉCHARGEMENTS',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.primary,
-                  letterSpacing: 1,
-                ),
+          
+          // Téléchargements en cours
+          if (_downloadQueue.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'TÉLÉCHARGEMENTS',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ..._downloadQueue.map((task) => _buildCompactDownloadItem(task)).toList(),
+                ],
               ),
-              const SizedBox(height: 12),
-              ..._downloadQueue.map((task) => _buildDownloadTaskItem(task)).toList(),
-            ],
+            ),
           ],
-        ),
+          
+          Spacer(),
+          
+          // Version en bas
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Text(
+              'v1.0.0',
+              style: TextStyle(
+                fontSize: 11,
+                color: AppColors.textSecondary.withOpacity(0.5),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
   
-  Widget _buildDownloadTaskItem(DownloadTask task) {
+  Widget _buildCompactInfo(IconData icon, String text) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: AppColors.textSecondary),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+          ),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildCompactDownloadItem(DownloadTask task) {
     Color statusColor;
     IconData statusIcon;
     
@@ -717,12 +703,11 @@ class _DesktopScreenState extends State<DesktopScreen> {
     }
     
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: statusColor.withOpacity(0.1),
+        color: AppColors.background,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: statusColor.withOpacity(0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -731,23 +716,20 @@ class _DesktopScreenState extends State<DesktopScreen> {
             children: [
               if (task.status == DownloadStatus.downloading)
                 SizedBox(
-                  width: 14,
-                  height: 14,
+                  width: 12,
+                  height: 12,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
                     color: statusColor,
                   ),
                 )
               else
-                Icon(statusIcon, size: 14, color: statusColor),
+                Icon(statusIcon, size: 12, color: statusColor),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   task.fileName,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                  ),
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -756,7 +738,7 @@ class _DesktopScreenState extends State<DesktopScreen> {
                 Text(
                   '${(task.progress * 100).toStringAsFixed(0)}%',
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 10,
                     fontWeight: FontWeight.bold,
                     color: statusColor,
                   ),
@@ -764,180 +746,105 @@ class _DesktopScreenState extends State<DesktopScreen> {
             ],
           ),
           if (task.status == DownloadStatus.downloading) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             LinearProgressIndicator(
               value: task.progress,
-              backgroundColor: AppColors.background,
+              backgroundColor: Colors.grey.withOpacity(0.2),
               color: statusColor,
-              minHeight: 3,
-              borderRadius: BorderRadius.circular(1.5),
+              minHeight: 2,
             ),
           ],
         ],
       ),
-    );
-  }
-  
-  Widget _buildInfoRow(String label, String value, IconData icon) {
-    return Row(
-      children: [
-        Icon(icon, size: 16, color: AppColors.textSecondary),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(label, style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
-        ),
-        Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-      ],
-    );
-  }
-  
-  Widget _buildInstructionsCard() {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: AppColors.accent.withOpacity(0.2)),
-      ),
-      color: AppColors.accent.withOpacity(0.05),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.help, color: AppColors.accent, size: 20),
-                const SizedBox(width: 8),
-                Text('INSTRUCTIONS', 
-                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, 
-                                    color: AppColors.accent, letterSpacing: 1)),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              '1. Cliquez sur "Autoriser la communication"\n'
-              '2. Ouvrez l\'app mobile sur le même réseau WiFi\n'
-              '3. L\'app mobile détectera automatiquement ce PC\n'
-              '4. Les connexions apparaîtront ici',
-              style: TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.6),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-  
-  Widget _buildVersion() {
-    return Text(
-      'Version 1.0.0 • TortoiseShare',
-      textAlign: TextAlign.center,
-      style: TextStyle(fontSize: 12, color: AppColors.textSecondary.withOpacity(0.6)),
     );
   }
   
   Widget _buildMainPanel() {
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('ACTIVITÉ EN TEMPS RÉEL', 
-                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, 
-                                  color: AppColors.textSecondary, letterSpacing: 1)),
-              if (_logs.isNotEmpty)
-                Text('${_logs.length} événements', 
-                     style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: _logs.isEmpty ? _buildEmptyState() : _buildLogsList(),
-          ),
-        ],
-      ),
-    );
-  }
-  
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.history, size: 80, color: AppColors.textSecondary.withOpacity(0.3)),
-          const SizedBox(height: 20),
-          Text('Aucune activité', 
-               style: TextStyle(fontSize: 18, color: AppColors.textSecondary.withOpacity(0.6), 
-                              fontWeight: FontWeight.w500)),
-          const SizedBox(height: 12),
-          Text('Les connexions et messages\napparaîtront ici', 
-               textAlign: TextAlign.center,
-               style: TextStyle(fontSize: 14, color: AppColors.textSecondary.withOpacity(0.5))),
-        ],
-      ),
-    );
-  }
-  
-  Widget _buildLogsList() {
-    return ListView.builder(
-      reverse: true,
-      itemCount: _logs.length,
-      itemBuilder: (context, index) => _buildLogItem(_logs[index]),
-    );
-  }
-  
-  Widget _buildLogItem(LogEntry log) {
-    final color = _getLogColor(log.type);
-    
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 4, spreadRadius: 1),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    if (_logs.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(log.icon, size: 20, color: color),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(child: Text(log.message, style: TextStyle(fontSize: 14))),
-                      Text(_formatTime(log.timestamp), 
-                           style: TextStyle(fontSize: 11, color: AppColors.textSecondary.withOpacity(0.6))),
-                    ],
-                  ),
-                  if (log.sender != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text('De: ${log.sender}', 
-                                 style: TextStyle(fontSize: 12, color: AppColors.textSecondary, 
-                                                fontStyle: FontStyle.italic)),
-                    ),
-                ],
+            Icon(Icons.history, size: 64, color: Colors.grey.withOpacity(0.3)),
+            const SizedBox(height: 16),
+            Text(
+              'Aucune activité',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey.withOpacity(0.6),
+                fontWeight: FontWeight.w500,
               ),
             ),
           ],
         ),
+      );
+    }
+    
+    return Column(
+      children: [
+        // Header simple
+        Container(
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Activité récente',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              TextButton.icon(
+                onPressed: _clearLogs,
+                icon: Icon(Icons.clear_all, size: 18),
+                label: Text('Effacer'),
+              ),
+            ],
+          ),
+        ),
+        Divider(height: 1),
+        // Liste des logs
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.all(20),
+            reverse: true,
+            itemCount: _logs.length,
+            itemBuilder: (context, index) => _buildCompactLogItem(_logs[index]),
+          ),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildCompactLogItem(LogEntry log) {
+    final color = _getLogColor(log.type);
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(log.icon, size: 18, color: color),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              log.message,
+              style: TextStyle(fontSize: 13),
+            ),
+          ),
+          Text(
+            _formatTime(log.timestamp),
+            style: TextStyle(
+              fontSize: 11,
+              color: AppColors.textSecondary.withOpacity(0.6),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -960,62 +867,6 @@ class _DesktopScreenState extends State<DesktopScreen> {
     return '${time.hour.toString().padLeft(2, '0')}:'
            '${time.minute.toString().padLeft(2, '0')}:'
            '${time.second.toString().padLeft(2, '0')}';
-  }
-  
-  // Bouton pour ouvrir l'explorateur de fichiers
-  Widget _buildFileBrowserButton() {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.blue.withOpacity(0.3)),
-      ),
-      color: Colors.blue.withOpacity(0.05),
-      child: InkWell(
-        onTap: _openFileBrowser,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(Icons.folder_open, color: Colors.blue, size: 24),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Explorateur',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Parcourir les fichiers du mobile',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(Icons.arrow_forward_ios, size: 16, color: Colors.blue),
-            ],
-          ),
-        ),
-      ),
-    );
   }
   
   // Explorateur de fichiers
