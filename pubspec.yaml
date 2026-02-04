@@ -12,8 +12,9 @@ dependencies:
     sdk: flutter
   file_picker: ^8.1.4  # Pour sélectionner des fichiers
   path_provider: ^2.1.5  # Pour accéder aux répertoires système
-  permission_handler: ^11.3.0  # Pour demander les permissions
   cupertino_icons: ^1.0.6
+  permission_handler: ^11.3.0
+  device_info_plus: ^10.1.0
 
 dev_dependencies:
   flutter_test:

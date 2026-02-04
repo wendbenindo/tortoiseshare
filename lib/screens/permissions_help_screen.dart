@@ -2,39 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../core/colors.dart';
 
-class PermissionsHelpScreen extends StatefulWidget {
+class PermissionsHelpScreen extends StatelessWidget {
   const PermissionsHelpScreen({super.key});
-
-  @override
-  State<PermissionsHelpScreen> createState() => _PermissionsHelpScreenState();
-}
-
-class _PermissionsHelpScreenState extends State<PermissionsHelpScreen> {
-  bool _isChecking = false;
-  PermissionStatus? _storageStatus;
-  PermissionStatus? _manageStorageStatus;
-
-  @override
-  void initState() {
-    super.initState();
-    _checkPermissions();
-  }
-
-  Future<void> _checkPermissions() async {
-    setState(() => _isChecking = true);
-    
-    _storageStatus = await Permission.storage.status;
-    _manageStorageStatus = await Permission.manageExternalStorage.status;
-    
-    setState(() => _isChecking = false);
-  }
-
-  Future<void> _openSettings() async {
-    await openAppSettings();
-    // Revérifier après retour
-    await Future.delayed(const Duration(seconds: 1));
-    _checkPermissions();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -57,9 +26,7 @@ class _PermissionsHelpScreenState extends State<PermissionsHelpScreen> {
             const SizedBox(height: 32),
             _buildSolutionSection(),
             const SizedBox(height: 32),
-            _buildPermissionStatus(),
-            const SizedBox(height: 32),
-            _buildActionButton(),
+            _buildActionButton(context),
           ],
         ),
       ),
@@ -128,7 +95,8 @@ class _PermissionsHelpScreenState extends State<PermissionsHelpScreen> {
         Text(
           'Pour que le PC puisse naviguer dans les fichiers de ton téléphone '
           '(Téléchargements, Photos, Documents, etc.), Android nécessite une '
-          'permission spéciale appelée "Gérer tous les fichiers".',
+          'permission spéciale appelée "Gérer tous les fichiers".\n\n'
+          'Sans cette permission, Android bloque l\'accès avec "Permission denied".',
           style: TextStyle(
             fontSize: 15,
             color: AppColors.textSecondary,
@@ -165,10 +133,13 @@ class _PermissionsHelpScreenState extends State<PermissionsHelpScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          _buildStep(1, 'Clique sur "Ouvrir les paramètres" ci-dessous'),
-          _buildStep(2, 'Cherche "Fichiers et médias" ou "Autorisations"'),
-          _buildStep(3, 'Sélectionne "Autoriser la gestion de tous les fichiers"'),
-          _buildStep(4, 'Reviens dans l\'app et reconnecte-toi'),
+          _buildStep(1, 'Ouvre les Paramètres de ton téléphone'),
+          _buildStep(2, 'Va dans "Applications" ou "Apps"'),
+          _buildStep(3, 'Cherche et ouvre "TortoiseShare"'),
+          _buildStep(4, 'Clique sur "Autorisations" ou "Permissions"'),
+          _buildStep(5, 'Clique sur "Fichiers et médias"'),
+          _buildStep(6, 'Sélectionne "Autoriser la gestion de tous les fichiers"'),
+          _buildStep(7, 'Reviens dans l\'app et reconnecte-toi'),
         ],
       ),
     );
@@ -217,119 +188,52 @@ class _PermissionsHelpScreenState extends State<PermissionsHelpScreen> {
     );
   }
 
-  Widget _buildPermissionStatus() {
-    if (_isChecking) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
+  Widget _buildActionButton(BuildContext context) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'État des permissions',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.info.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.info.withOpacity(0.3)),
           ),
-        ),
-        const SizedBox(height: 12),
-        _buildPermissionItem(
-          'Stockage',
-          _storageStatus,
-          Icons.storage,
-        ),
-        const SizedBox(height: 8),
-        _buildPermissionItem(
-          'Gérer tous les fichiers',
-          _manageStorageStatus,
-          Icons.folder_open,
-          isImportant: true,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPermissionItem(
-    String name,
-    PermissionStatus? status,
-    IconData icon, {
-    bool isImportant = false,
-  }) {
-    final isGranted = status?.isGranted ?? false;
-    final color = isGranted ? AppColors.success : AppColors.error;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: color.withOpacity(0.3),
-          width: isImportant ? 2 : 1,
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: color, size: 24),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
+          child: Row(
+            children: [
+              Icon(Icons.lightbulb_outline, color: AppColors.info),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Astuce : Tu peux aussi chercher "Gérer tous les fichiers" '
+                  'directement dans la barre de recherche des Paramètres',
                   style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: isImportant ? FontWeight.bold : FontWeight.w500,
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                    height: 1.4,
                   ),
                 ),
-                if (isImportant && !isGranted) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    '⚠️ Permission requise',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.error,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ],
-            ),
+              ),
+            ],
           ),
-          Icon(
-            isGranted ? Icons.check_circle : Icons.cancel,
-            color: color,
-            size: 28,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionButton() {
-    final allGranted = (_manageStorageStatus?.isGranted ?? false);
-
-    return Column(
-      children: [
+        ),
+        const SizedBox(height: 24),
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
-            onPressed: allGranted ? null : _openSettings,
-            icon: Icon(
-              allGranted ? Icons.check_circle : Icons.settings,
-              color: Colors.white,
-            ),
-            label: Text(
-              allGranted ? 'Permissions activées !' : 'Ouvrir les paramètres',
-              style: const TextStyle(
+            onPressed: () {
+              openAppSettings();
+            },
+            icon: const Icon(Icons.settings, color: Colors.white),
+            label: const Text(
+              'Ouvrir les Paramètres',
+              style: TextStyle(
                 color: Colors.white,
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
               ),
             ),
             style: ElevatedButton.styleFrom(
-              backgroundColor: allGranted ? AppColors.success : AppColors.primary,
+              backgroundColor: AppColors.primary,
               padding: const EdgeInsets.symmetric(vertical: 16),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -337,40 +241,6 @@ class _PermissionsHelpScreenState extends State<PermissionsHelpScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 12),
-        TextButton.icon(
-          onPressed: _checkPermissions,
-          icon: Icon(Icons.refresh, color: AppColors.primary),
-          label: Text(
-            'Vérifier à nouveau',
-            style: TextStyle(color: AppColors.primary),
-          ),
-        ),
-        if (allGranted) ...[
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () => Navigator.pop(context, true),
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
-              label: const Text(
-                'Retour à l\'app',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.success,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-          ),
-        ],
       ],
     );
   }

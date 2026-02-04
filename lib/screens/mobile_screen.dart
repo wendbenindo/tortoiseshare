@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import '../core/colors.dart';
 import '../services/network_scanner.dart';
 import '../services/tcp_client.dart';
@@ -27,6 +29,7 @@ class _MobileScreenState extends State<MobileScreen> {
   String _pcName = 'PC TortoiseShare';
   int _scanProgress = 0;
   int _totalScans = 0;
+  bool _hasPermission = false;
   
   // Pour le transfert de fichiers
   bool _isTransferring = false;
@@ -40,8 +43,10 @@ class _MobileScreenState extends State<MobileScreen> {
   void initState() {
     super.initState();
     
-    // Demander les permissions au démarrage
-    _requestPermissions();
+    // Vérifier les permissions au démarrage
+    if (Platform.isAndroid) {
+      _checkPermissions();
+    }
     
     // Écouter les messages du serveur
     _client.messageStream.listen((message) {
@@ -58,44 +63,93 @@ class _MobileScreenState extends State<MobileScreen> {
       }
     };
   }
-  
-  // Demander les permissions de stockage
-  Future<void> _requestPermissions() async {
-    print('🔐 Demande des permissions...');
+
+  // Vérifier et demander les permissions
+  Future<void> _checkPermissions() async {
+    bool hasPermission = false;
     
-    // Pour Android 13+ (API 33+) - Permissions granulaires
-    if (await Permission.photos.isDenied) {
-      final result = await Permission.photos.request();
-      print('📷 Permission photos: $result');
-    }
-    if (await Permission.videos.isDenied) {
-      final result = await Permission.videos.request();
-      print('🎥 Permission vidéos: $result');
-    }
-    if (await Permission.audio.isDenied) {
-      final result = await Permission.audio.request();
-      print('🎵 Permission audio: $result');
-    }
-    
-    // Pour Android 10-12 (API 29-32) - Permission stockage
-    if (await Permission.storage.isDenied) {
-      final result = await Permission.storage.request();
-      print('💾 Permission stockage: $result');
-    }
-    
-    // Pour Android 11+ (API 30+) - Gestion complète du stockage
-    if (await Permission.manageExternalStorage.isDenied) {
-      final result = await Permission.manageExternalStorage.request();
-      print('📂 Permission gestion stockage: $result');
+    if (Platform.isAndroid) {
+      final deviceInfo = DeviceInfoPlugin();
+      final androidInfo = await deviceInfo.androidInfo;
       
-      if (result.isDenied) {
-        // Informer l'utilisateur
-        print('⚠️ Permission de gestion du stockage refusée');
-        print('💡 Pour un accès complet, active "Autoriser la gestion de tous les fichiers" dans les paramètres');
+      if (androidInfo.version.sdkInt >= 30) {
+        // Android 11+ : Utiliser MANAGE_EXTERNAL_STORAGE
+        hasPermission = await Permission.manageExternalStorage.isGranted;
+      } else {
+        // Android 10 et moins : Utiliser STORAGE normal
+        hasPermission = await Permission.storage.isGranted;
+      }
+    } else {
+      // iOS ou autre
+      hasPermission = true;
+    }
+    
+    if (mounted) {
+      setState(() {
+        _hasPermission = hasPermission;
+      });
+    }
+    
+    if (!hasPermission && Platform.isAndroid) {
+      // Demander la permission
+      await _requestPermission();
+    }
+  }
+  
+  // Demander la permission
+  Future<void> _requestPermission() async {
+    final deviceInfo = DeviceInfoPlugin();
+    final androidInfo = await deviceInfo.androidInfo;
+    PermissionStatus status;
+    
+    if (androidInfo.version.sdkInt >= 30) {
+      status = await Permission.manageExternalStorage.request();
+    } else {
+      status = await Permission.storage.request();
+    }
+    
+    if (mounted) {
+      setState(() {
+        _hasPermission = status.isGranted;
+      });
+      
+      if (!status.isGranted) {
+        // Si refusé, montrer l'écran d'aide
+        _showPermissionDialog();
       }
     }
-    
-    print('✅ Demande de permissions terminée');
+  }
+
+  void _showPermissionDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Permission requise'),
+        content: const Text(
+          'Pour que le PC puisse voir tes fichiers, tu dois autoriser '
+          'l\'accès à tous les fichiers. C\'est obligatoire pour cette fonctionnalité.'
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // L'utilisateur refuse, on le prévient
+              _showSnackBar('Fonctionnalité limitée sans permission', AppColors.warning);
+            },
+            child: const Text('Plus tard'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              openAppSettings();
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+            child: const Text('Ouvrir les paramètres', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
   
   // Démarrer le scan
