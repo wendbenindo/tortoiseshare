@@ -14,138 +14,126 @@ flutter run -d android    # Pour mobile (si émulateur/device connecté)
 - ✅ Scan réseau automatique
 - ✅ Connexion TCP mobile ↔ desktop
 - ✅ Envoi de messages texte
+- ✅ **Transfert de fichiers (mobile → desktop)**
+- ✅ **Explorateur de fichiers (desktop → mobile)**
+- ✅ **File d'attente de téléchargements multiples** ⭐ NOUVEAU FIX!
 - ✅ Interface utilisateur moderne
 - ✅ Logs en temps réel (desktop)
 - ✅ Détection automatique du réseau local
 
-## 📁 Structure actuelle
+## 📁 Structure actuelle (Clean Architecture)
 
 ```
 lib/
-├── main.dart                 # ✅ Point d'entrée
-├── mobile_app.dart           # ✅ App mobile (994 lignes)
-├── desktop_app.dart          # ✅ App desktop (600 lignes)
-├── pc_server.dart            # ⏳ En développement
-└── core/                     # ✅ NOUVEAU !
-    ├── constants.dart        # Constantes globales
-    ├── colors.dart           # Palette de couleurs
-    └── network_helper.dart   # Utilitaires réseau
+├── main.dart                          # ✅ Point d'entrée
+├── core/                              # ✅ Utilitaires
+│   ├── constants.dart                 # Constantes globales
+│   ├── colors.dart                    # Palette de couleurs
+│   └── network_helper.dart            # Utilitaires réseau
+├── models/                            # ✅ Modèles de données
+│   ├── device.dart                    # Modèle appareil
+│   ├── connection_status.dart         # Statut connexion
+│   ├── file_transfer.dart             # Transfert de fichier
+│   ├── remote_file.dart               # Fichier distant
+│   └── download_task.dart             # Tâche de téléchargement
+├── services/                          # ✅ Services métier
+│   ├── tcp_client.dart                # Client TCP (mobile)
+│   ├── tcp_server.dart                # Serveur TCP (desktop) ⭐ FIXED!
+│   ├── network_scanner.dart           # Scanner réseau
+│   ├── file_transfer_service.dart     # Service transfert fichiers
+│   └── file_browser_service.dart      # Service explorateur fichiers
+└── screens/                           # ✅ Écrans UI
+    ├── mobile_screen.dart             # Interface mobile
+    ├── desktop_screen.dart            # Interface desktop
+    └── permissions_help_screen.dart   # Aide permissions Android
 ```
 
-## 🎯 Fichiers de base créés
+## 🎉 Features complètes
 
-J'ai créé 3 fichiers utilitaires que tu peux commencer à utiliser :
+### ✅ Transfert de fichiers
+- ✅ Sélectionner un fichier (mobile)
+- ✅ Envoyer via TCP avec chunks de 8KB
+- ✅ Recevoir et sauvegarder (desktop)
+- ✅ Barre de progression en temps réel
+- ✅ Dialog d'acceptation/refus sur desktop
+- ✅ Sauvegarde dans `Downloads/TortoiseShare/`
 
-### 1. `lib/core/constants.dart`
-```dart
-AppConstants.serverPort        // 8081
-AppConstants.connectionTimeout // 3 secondes
-AppConstants.commonNetworks    // Liste des réseaux à scanner
-```
+### ✅ Explorateur de fichiers
+- ✅ Parcourir les fichiers du mobile depuis le desktop
+- ✅ Navigation dans les dossiers
+- ✅ Téléchargement de fichiers individuels
+- ✅ **File d'attente de téléchargements multiples** ⭐ NOUVEAU!
+- ✅ Indicateurs de progression pour chaque fichier
+- ✅ Gestion des erreurs et timeouts
 
-### 2. `lib/core/colors.dart`
-```dart
-AppColors.primary    // Vert TortoiseShare
-AppColors.success    // Vert succès
-AppColors.error      // Rouge erreur
-// etc.
-```
+### 🚀 Prochaines features (Optionnel)
 
-### 3. `lib/core/network_helper.dart`
-```dart
-NetworkHelper.getLocalIP()           // Obtenir l'IP locale
-NetworkHelper.getNetworkBase(ip)     // Extraire "192.168.1" de "192.168.1.100"
-NetworkHelper.formatBytes(bytes)     // "1.5 MB"
-NetworkHelper.isValidIP(ip)          // Valider une IP
-```
-
-## 🔄 Prochaines étapes (Optionnel)
-
-Le refactoring est **optionnel**. Ton app fonctionne déjà !
-
-Si tu veux améliorer la structure :
-1. Lire `GUIDE_REFACTORING.md` pour comprendre le plan
-2. Extraire progressivement le code en services
-3. Créer des widgets réutilisables
-
-## 🚀 Features à ajouter (Priorités)
-
-### Priorité 1 : Transfert de fichiers
-- Sélectionner un fichier (mobile)
-- Envoyer via TCP
-- Recevoir et sauvegarder (desktop)
-- Barre de progression
-
-### Priorité 2 : Partage d'écran
+#### Priorité 1 : Partage d'écran
 - Capturer l'écran (desktop)
 - Streamer via TCP
 - Afficher (mobile)
 
-### Priorité 3 : Améliorations
-- Permissions (stockage, réseau)
+#### Priorité 2 : Améliorations
 - Chiffrement des communications
 - Reprise après interruption
 - Historique des transferts
+- Transfert bidirectionnel (desktop → mobile)
 
 ## 📝 Documentation
 
 - `README2.md` - Description du projet
 - `GUIDE_REFACTORING.md` - Guide de refactoring détaillé
-- `ARCHITECTURE.md` - Architecture Clean (pour référence future)
+- `TRANSFERT_FICHIERS.md` - Documentation transfert de fichiers
+- `EXPLORATEUR_FICHIERS.md` - Documentation explorateur
+- `SOLUTION_PERMISSIONS.md` - Guide permissions Android
+- `FIX_DOWNLOAD_QUEUE.md` - ⭐ Fix téléchargements multiples (critique)
+- `POLISH_LOGS.md` - ⭐ Nettoyage logs et fix doublons
+- `TEST_MULTIPLE_DOWNLOADS.md` - Guide de test complet
 - `STATUS.md` - Ce fichier
 
-## 🎓 Comment utiliser les nouveaux fichiers
+## 🐛 Bugs récemment corrigés
 
-### Exemple 1 : Utiliser les constantes
-```dart
-// Au lieu de :
-final socket = await Socket.connect(ip, 8081, timeout: Duration(seconds: 3));
+### ⭐ Fix 1: Téléchargements multiples (CRITIQUE)
+**Problème** : Le deuxième fichier et les suivants restaient bloqués à 0% indéfiniment.
 
-// Tu peux faire :
-import 'core/constants.dart';
-final socket = await Socket.connect(
-  ip, 
-  AppConstants.serverPort, 
-  timeout: AppConstants.connectionTimeout
-);
-```
+**Cause** : Le serveur TCP essayait de décoder les données binaires des fichiers en UTF-8, ce qui causait un crash silencieux du listener.
 
-### Exemple 2 : Utiliser les couleurs
-```dart
-// Au lieu de :
-final Color _primaryColor = const Color(0xFF4CAF50);
+**Solution** : Refactorisation complète du gestionnaire de socket pour gérer proprement les données binaires.
 
-// Tu peux faire :
-import 'core/colors.dart';
-backgroundColor: AppColors.primary,
-```
+**Fichiers modifiés** : `lib/services/tcp_server.dart`
 
-### Exemple 3 : Utiliser les helpers
-```dart
-// Au lieu de :
-final interfaces = await NetworkInterface.list();
-// ... 20 lignes de code ...
+**Documentation** : `FIX_DOWNLOAD_QUEUE.md`
 
-// Tu peux faire :
-import 'core/network_helper.dart';
-final ip = await NetworkHelper.getLocalIP();
-```
+### ⭐ Fix 2: Doublons dans la file de téléchargement
+**Problème** : Chaque fichier apparaissait 2 fois dans la file d'attente.
 
-## ⚠️ Important
+**Cause** : Problème de timing - la tâche changeait de statut avant l'arrivée de `FILE|START`, créant un doublon.
 
-- **Ne supprime pas** `mobile_app.dart` et `desktop_app.dart` - ils fonctionnent !
-- Les nouveaux fichiers dans `core/` sont des **additions**, pas des remplacements
-- Tu peux les utiliser progressivement dans ton code existant
-- Commit régulièrement avec Git pour pouvoir revenir en arrière
+**Solution** : Recherche de tâche existante par nom de fichier (peu importe le statut) au lieu de chercher uniquement les tâches `pending`.
+
+**Fichiers modifiés** : `lib/screens/desktop_screen.dart`
+
+**Documentation** : `POLISH_LOGS.md`
+
+### ⭐ Fix 3: Spam de logs
+**Problème** : Console polluée avec 70+ lignes de logs par fichier téléchargé.
+
+**Solution** : Suppression des logs de debug verbeux, conservation uniquement des logs essentiels (début, fin, erreurs).
+
+**Résultat** : 3 lignes par fichier au lieu de 70+
+
+**Fichiers modifiés** : `lib/screens/desktop_screen.dart`, `lib/services/tcp_server.dart`
+
+**Documentation** : `POLISH_LOGS.md`
 
 ## 🤝 Besoin d'aide ?
 
 Dis-moi ce que tu veux faire :
-- **Ajouter le transfert de fichiers** → Je t'aide à l'implémenter
-- **Continuer le refactoring** → On extrait le code ensemble
+- **Tester les téléchargements multiples** → Lance l'app et télécharge plusieurs fichiers !
+- **Ajouter le partage d'écran** → Je t'aide à l'implémenter
 - **Améliorer l'UI** → On crée de nouveaux widgets
 - **Autre chose** → Dis-moi !
 
 ---
 
-**Résumé** : Ton app marche, j'ai créé 3 fichiers utilitaires que tu peux utiliser quand tu veux. Pas d'urgence pour refactoriser ! 🐢
+**Résumé** : Ton app est complète avec transfert de fichiers et explorateur ! Le bug des téléchargements multiples est corrigé. 🐢✨

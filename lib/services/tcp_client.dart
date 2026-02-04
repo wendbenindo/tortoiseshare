@@ -223,8 +223,10 @@ class TcpClient {
         return;
       }
       
-      // Envoyer le fichier
+      // Envoyer le fichier (sendFile gère déjà FILE|START et FILE|END)
+      print('📤 Envoi du fichier...');
       await sendFile(filePath);
+      print('✅ Fichier envoyé avec succès');
       
     } catch (e) {
       print('❌ Erreur _handleFileDownloadRequest: $e');

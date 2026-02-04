@@ -92,23 +92,29 @@ class TcpServer {
     // Écouter les messages du client
     client.listen(
       (List<int> data) {
+        // Toujours accumuler dans le buffer
+        buffer.addAll(data);
+        
         if (receivingFile) {
-          // Mode réception de fichier
-          buffer.addAll(data);
-          _checkFileEnd(buffer, ip);
+          // Mode réception de fichier - chercher FILE|END
+          _checkFileEnd(buffer, ip, () {
+            // Callback quand le fichier est terminé
+            receivingFile = false;
+            buffer.clear();
+          });
         } else {
           // Mode réception de messages texte
-          final text = utf8.decode(data).trim();
-          
-          if (text.startsWith('FILE|START|')) {
-            // Début de réception de fichier
-            receivingFile = true;
-            buffer.clear();
-            _handleFileStart(text, ip);
-          } else {
-            // Message normal
-            _handleClientMessage(text, ip);
-          }
+          // Chercher les lignes complètes (terminées par \n)
+          _processTextBuffer(buffer, ip, (message) {
+            if (message.startsWith('FILE|START|')) {
+              // Début de réception de fichier
+              receivingFile = true;
+              _handleFileStart(message, ip);
+            } else {
+              // Message normal
+              _handleClientMessage(message, ip);
+            }
+          });
         }
       },
       onDone: () {
@@ -158,8 +164,31 @@ class TcpServer {
     ));
   }
   
+  // Traiter le buffer en mode texte
+  void _processTextBuffer(List<int> buffer, String clientIP, Function(String) onMessage) {
+    // Chercher les lignes complètes (terminées par \n)
+    while (true) {
+      final newlineIndex = buffer.indexOf(10); // 10 = '\n'
+      if (newlineIndex == -1) break; // Pas de ligne complète
+      
+      // Extraire la ligne
+      final lineBytes = buffer.sublist(0, newlineIndex);
+      buffer.removeRange(0, newlineIndex + 1);
+      
+      // Décoder en UTF-8 (seulement les messages texte)
+      try {
+        final message = utf8.decode(lineBytes).trim();
+        if (message.isNotEmpty) {
+          onMessage(message);
+        }
+      } catch (e) {
+        print('❌ Erreur décodage UTF-8: $e');
+      }
+    }
+  }
+  
   // Vérifier si on a reçu la fin du fichier
-  void _checkFileEnd(List<int> buffer, String clientIP) {
+  void _checkFileEnd(List<int> buffer, String clientIP, Function onComplete) {
     final state = _fileReceptions[clientIP];
     if (state == null) return;
     
@@ -179,7 +208,12 @@ class TcpServer {
       
       // Nettoyer
       _fileReceptions.remove(clientIP);
-      buffer.clear();
+      
+      // Retirer FILE|END\n du buffer
+      buffer.removeRange(0, endIndex + endMarker.length);
+      
+      // Appeler le callback pour revenir en mode texte
+      onComplete();
     } else {
       // Pas encore fini, continuer à accumuler
       state.receivedBytes.addAll(buffer);

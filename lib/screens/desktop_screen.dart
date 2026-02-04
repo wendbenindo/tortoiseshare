@@ -3,6 +3,7 @@ import '../core/colors.dart';
 import '../core/network_helper.dart';
 import '../services/tcp_server.dart';
 import '../models/remote_file.dart';
+import '../models/download_task.dart';
 
 class DesktopScreen extends StatefulWidget {
   const DesktopScreen({super.key});
@@ -30,6 +31,10 @@ class _DesktopScreenState extends State<DesktopScreen> {
   String _currentPath = 'ROOT';
   bool _loadingFiles = false;
   String? _connectedClientIP;
+  
+  // Pour la file d'attente de téléchargements
+  final List<DownloadTask> _downloadQueue = [];
+  bool _isProcessingDownload = false;
   
   @override
   void initState() {
@@ -60,8 +65,7 @@ class _DesktopScreenState extends State<DesktopScreen> {
         break;
         
       case ServerMessageType.clientConnected:
-        _addLog('Appareil connecté: ${message.data['ip']}', 
-                LogType.connect, Icons.device_hub);
+        // Pas de log pour éviter le spam
         _connectedClientIP = message.data['ip'];
         break;
         
@@ -75,9 +79,8 @@ class _DesktopScreenState extends State<DesktopScreen> {
         break;
         
       case ServerMessageType.textMessage:
+        // Pas de log pour les messages texte
         _messagesReceived++;
-        _addLog(message.data['text'], LogType.message, Icons.message, 
-                sender: message.data['from']);
         break;
         
       case ServerMessageType.screenRequest:
@@ -96,42 +99,129 @@ class _DesktopScreenState extends State<DesktopScreen> {
         break;
         
       case ServerMessageType.fileStart:
-        // Afficher une demande d'acceptation
+        // Un fichier commence à être reçu
         final fileName = message.data['fileName'];
         final fileSize = message.data['fileSize'];
         final from = message.data['from'];
         
-        _showFileRequestDialog(fileName, fileSize, from);
+        // Chercher une tâche existante (peu importe le statut)
+        final existingTask = _downloadQueue.firstWhere(
+          (t) => t.fileName == fileName,
+          orElse: () => DownloadTask(id: '', fileName: '', filePath: '', fileSize: 0, from: ''),
+        );
+        
+        if (existingTask.id.isNotEmpty) {
+          // Tâche trouvée - mettre à jour le statut
+          setState(() {
+            existingTask.status = DownloadStatus.downloading;
+          });
+        } else {
+          // Tâche non trouvée - créer une nouvelle (cas rare)
+          final newTask = DownloadTask(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            fileName: fileName,
+            filePath: '',
+            fileSize: fileSize,
+            from: from,
+            status: DownloadStatus.downloading,
+          );
+          setState(() {
+            _downloadQueue.add(newTask);
+          });
+        }
         break;
         
       case ServerMessageType.fileProgress:
-        // Ne plus afficher de log pour chaque progression
-        // Juste mettre à jour l'état interne si besoin
+        // Mettre à jour la progression
+        final fileName = message.data['fileName'];
+        final progress = message.data['progress'] ?? 0.0;
+        
+        // Chercher la tâche en cours de téléchargement
+        final task = _downloadQueue.firstWhere(
+          (t) => t.fileName == fileName && t.status == DownloadStatus.downloading,
+          orElse: () => DownloadTask(id: '', fileName: '', filePath: '', fileSize: 0, from: ''),
+        );
+        
+        if (task.id.isNotEmpty) {
+          setState(() {
+            task.progress = progress;
+          });
+        }
         break;
         
       case ServerMessageType.fileComplete:
+        final fileName = message.data['fileName'];
+        
+        final task = _downloadQueue.firstWhere(
+          (t) => t.fileName == fileName,
+          orElse: () => DownloadTask(id: '', fileName: '', filePath: '', fileSize: 0, from: ''),
+        );
+        
+        if (task.id.isNotEmpty) {
+          setState(() {
+            task.status = DownloadStatus.completed;
+            task.progress = 1.0;
+          });
+          
+          // Retirer de la file après 2 secondes
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted) {
+              setState(() {
+                _downloadQueue.remove(task);
+              });
+            }
+          });
+        }
+        
         _addLog('✅ Fichier reçu: ${message.data['fileName']}', 
                 LogType.file, Icons.check_circle,
                 sender: message.data['from']);
-        _showNotification('Fichier reçu: ${message.data['fileName']}');
+        
+        // Traiter le prochain téléchargement
+        _isProcessingDownload = false;
+        _processNextDownload();
         break;
         
       case ServerMessageType.fileError:
+        final fileName = message.data['fileName'];
+        
+        final task = _downloadQueue.firstWhere(
+          (t) => t.fileName == fileName,
+          orElse: () => DownloadTask(id: '', fileName: '', filePath: '', fileSize: 0, from: ''),
+        );
+        
+        if (task.id.isNotEmpty) {
+          setState(() {
+            task.status = DownloadStatus.failed;
+            task.error = 'Erreur de téléchargement';
+          });
+          
+          // Retirer de la file après 3 secondes
+          Future.delayed(const Duration(seconds: 3), () {
+            if (mounted) {
+              setState(() {
+                _downloadQueue.remove(task);
+              });
+            }
+          });
+        }
+        
         _addLog('❌ Erreur fichier: ${message.data['fileName']}', 
                 LogType.error, Icons.error,
                 sender: message.data['from']);
+        
+        // Traiter le prochain téléchargement
+        _isProcessingDownload = false;
+        _processNextDownload();
         break;
         
       case ServerMessageType.fileListResponse:
-        // Réponse avec la liste des fichiers
+        // Réponse avec la liste des fichiers (pas de log)
         final files = message.data['files'] as List<RemoteFile>;
         setState(() {
           _currentFiles = files;
           _loadingFiles = false;
         });
-        _addLog('📂 ${files.length} éléments reçus', 
-                LogType.file, Icons.folder,
-                sender: message.data['from']);
         break;
         
       case ServerMessageType.fileListError:
@@ -334,15 +424,49 @@ class _DesktopScreenState extends State<DesktopScreen> {
     }
   }
   
-  // Télécharger un fichier
+  // Télécharger un fichier (ajouter à la file d'attente)
   void _downloadFile(RemoteFile file) {
     if (_connectedClientIP == null) return;
     
-    _addLog('📥 Demande de téléchargement: ${file.name}', 
-            LogType.file, Icons.download,
-            sender: _connectedClientIP);
+    // Créer une nouvelle tâche
+    final task = DownloadTask(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      fileName: file.name,
+      filePath: file.path,
+      fileSize: file.size,
+      from: _connectedClientIP!,
+      status: DownloadStatus.pending,
+    );
     
-    _server.requestFileDownload(_connectedClientIP!, file.path);
+    setState(() {
+      _downloadQueue.add(task);
+    });
+    
+    // Traiter la file d'attente
+    _processNextDownload();
+  }
+  
+  // Traiter le prochain téléchargement dans la file
+  void _processNextDownload() {
+    if (_isProcessingDownload) return;
+    
+    // Trouver la prochaine tâche en attente
+    final nextTask = _downloadQueue.firstWhere(
+      (t) => t.status == DownloadStatus.pending,
+      orElse: () => DownloadTask(id: '', fileName: '', filePath: '', fileSize: 0, from: ''),
+    );
+    
+    if (nextTask.id.isEmpty) return;
+    
+    // Marquer comme en cours de traitement
+    _isProcessingDownload = true;
+    
+    setState(() {
+      nextTask.status = DownloadStatus.downloading;
+    });
+    
+    // Demander le fichier au mobile
+    _server.requestFileDownload(nextTask.from, nextTask.filePath);
   }
   
   @override
@@ -545,10 +669,111 @@ class _DesktopScreenState extends State<DesktopScreen> {
             _buildInfoRow('Port', '8081', Icons.adjust),
             const SizedBox(height: 8),
             _buildInfoRow('Appareils connectés', '${_server.connectedDevices.length}', Icons.device_hub),
-            const SizedBox(height: 8),
-            _buildInfoRow('Messages reçus', '$_messagesReceived', Icons.message),
+            
+            // Afficher la file d'attente de téléchargements
+            if (_downloadQueue.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Divider(color: AppColors.primary.withOpacity(0.3)),
+              const SizedBox(height: 12),
+              Text(
+                'TÉLÉCHARGEMENTS',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.primary,
+                  letterSpacing: 1,
+                ),
+              ),
+              const SizedBox(height: 12),
+              ..._downloadQueue.map((task) => _buildDownloadTaskItem(task)).toList(),
+            ],
           ],
         ),
+      ),
+    );
+  }
+  
+  Widget _buildDownloadTaskItem(DownloadTask task) {
+    Color statusColor;
+    IconData statusIcon;
+    
+    switch (task.status) {
+      case DownloadStatus.pending:
+        statusColor = Colors.grey;
+        statusIcon = Icons.schedule;
+        break;
+      case DownloadStatus.downloading:
+        statusColor = AppColors.primary;
+        statusIcon = Icons.downloading;
+        break;
+      case DownloadStatus.completed:
+        statusColor = AppColors.success;
+        statusIcon = Icons.check_circle;
+        break;
+      case DownloadStatus.failed:
+        statusColor = AppColors.error;
+        statusIcon = Icons.error;
+        break;
+    }
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: statusColor.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: statusColor.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              if (task.status == DownloadStatus.downloading)
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: statusColor,
+                  ),
+                )
+              else
+                Icon(statusIcon, size: 14, color: statusColor),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  task.fileName,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (task.status == DownloadStatus.downloading)
+                Text(
+                  '${(task.progress * 100).toStringAsFixed(0)}%',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: statusColor,
+                  ),
+                ),
+            ],
+          ),
+          if (task.status == DownloadStatus.downloading) ...[
+            const SizedBox(height: 8),
+            LinearProgressIndicator(
+              value: task.progress,
+              backgroundColor: AppColors.background,
+              color: statusColor,
+              minHeight: 3,
+              borderRadius: BorderRadius.circular(1.5),
+            ),
+          ],
+        ],
       ),
     );
   }
