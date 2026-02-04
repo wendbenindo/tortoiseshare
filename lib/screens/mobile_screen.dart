@@ -568,7 +568,7 @@ class _MobileScreenState extends State<MobileScreen> {
       children: [
         _buildConnectionHeader(),
         Expanded(
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
