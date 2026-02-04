@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/colors.dart';
 import '../services/network_scanner.dart';
 import '../services/tcp_client.dart';
@@ -48,6 +49,9 @@ class _MobileScreenState extends State<MobileScreen> {
       _checkPermissions();
     }
     
+    // Charger le dernier PC connu
+    _loadLastKnownPC();
+    
     // Écouter les messages du serveur
     _client.messageStream.listen((message) {
       _handleServerMessage(message);
@@ -62,6 +66,37 @@ class _MobileScreenState extends State<MobileScreen> {
         });
       }
     };
+  }
+  
+  // Charger le dernier PC connu
+  Future<void> _loadLastKnownPC() async {
+    final prefs = await SharedPreferences.getInstance();
+    final lastIP = prefs.getString('last_pc_ip');
+    final lastName = prefs.getString('last_pc_name');
+    
+    if (lastIP != null) {
+      // Ajouter le PC connu à la liste
+      final knownDevice = Device(
+        id: lastIP,
+        name: lastName ?? 'PC TortoiseShare',
+        ipAddress: lastIP,
+        type: DeviceType.desktop,
+        connectedAt: DateTime.now(),
+      );
+      
+      if (mounted) {
+        setState(() {
+          _foundDevices.add(knownDevice);
+        });
+      }
+    }
+  }
+  
+  // Sauvegarder le PC trouvé
+  Future<void> _saveLastKnownPC(String ip, String name) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('last_pc_ip', ip);
+    await prefs.setString('last_pc_name', name);
   }
 
   // Vérifier et demander les permissions
@@ -199,6 +234,9 @@ class _MobileScreenState extends State<MobileScreen> {
         if (success) {
           _connectedDevice = device;
           _connectionState = AppConnectionState.connected(device.name);
+          
+          // Sauvegarder le PC pour la prochaine fois
+          _saveLastKnownPC(device.ipAddress, device.name);
         } else {
           _connectionState = AppConnectionState.error('Connexion échouée');
         }
@@ -457,7 +495,7 @@ class _MobileScreenState extends State<MobileScreen> {
         color: Colors.white,
       ),
       label: Text(
-        _connectionState.isScanning ? 'Recherche...' : '🔍 Rechercher un PC',
+        _connectionState.isScanning ? 'Recherche...' : 'Rechercher un PC',
         style: TextStyle(fontSize: 16, color: Colors.white),
       ),
       style: ElevatedButton.styleFrom(
@@ -487,15 +525,7 @@ class _MobileScreenState extends State<MobileScreen> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(_connectionState.message),
-                        if (_totalScans > 0)
-                          Text('$_scanProgress/$_totalScans adresses', 
-                               style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                      ],
-                    ),
+                    child: Text(_connectionState.message),
                   ),
                 ],
               ),
@@ -504,6 +534,7 @@ class _MobileScreenState extends State<MobileScreen> {
                 LinearProgressIndicator(
                   value: _scanProgress / _totalScans,
                   color: AppColors.primary,
+                  backgroundColor: AppColors.primary.withOpacity(0.2),
                 ),
               ],
             ] else
