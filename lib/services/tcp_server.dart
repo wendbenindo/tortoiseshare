@@ -372,6 +372,11 @@ class TcpServer {
     await sendToClient(clientIP, 'FILE|DOWNLOAD|$filePath');
   }
   
+  // Demander une miniature d'image depuis le mobile
+  Future<void> requestThumbnail(String clientIP, String filePath) async {
+    await sendToClient(clientIP, 'FILE|THUMBNAIL|$filePath');
+  }
+  
   // Nettoyer les ressources
   void dispose() {
     stopServer();
@@ -407,8 +412,9 @@ enum ServerMessageType {
   fileProgress,
   fileComplete,
   fileError,
-  fileListResponse,  // Nouveau : réponse avec la liste des fichiers
-  fileListError,     // Nouveau : erreur lors de la liste
+  fileListResponse,  // Réponse avec la liste des fichiers
+  fileListError,     // Erreur lors de la liste
+  thumbnailReceived, // Miniature d'image reçue
 }
 
 // Message du serveur

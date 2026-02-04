@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:typed_data';
 import '../core/colors.dart';
 import '../core/network_helper.dart';
 import '../services/tcp_server.dart';
@@ -35,6 +36,9 @@ class _DesktopScreenState extends State<DesktopScreen> {
   // Pour la file d'attente de téléchargements
   final List<DownloadTask> _downloadQueue = [];
   bool _isProcessingDownload = false;
+  
+  // Cache pour les miniatures d'images
+  final Map<String, Uint8List> _thumbnailCache = {};
   
   @override
   void initState() {
@@ -222,6 +226,9 @@ class _DesktopScreenState extends State<DesktopScreen> {
           _currentFiles = files;
           _loadingFiles = false;
         });
+        
+        // Charger les miniatures pour les images
+        _loadThumbnailsForImages();
         break;
         
       case ServerMessageType.fileListError:
@@ -231,6 +238,16 @@ class _DesktopScreenState extends State<DesktopScreen> {
         _addLog('❌ Erreur liste fichiers: ${message.data['error']}', 
                 LogType.error, Icons.error,
                 sender: message.data['from']);
+        break;
+        
+      case ServerMessageType.thumbnailReceived:
+        // Miniature d'image reçue
+        final filePath = message.data['filePath'] as String;
+        final thumbnailData = message.data['data'] as Uint8List;
+        
+        setState(() {
+          _thumbnailCache[filePath] = thumbnailData;
+        });
         break;
     }
   }
@@ -399,9 +416,22 @@ class _DesktopScreenState extends State<DesktopScreen> {
     setState(() {
       _currentPath = path;
       _loadingFiles = true;
+      _thumbnailCache.clear(); // Vider le cache des miniatures
     });
     
     _server.requestDirectoryList(_connectedClientIP!, path);
+  }
+  
+  // Charger les miniatures pour les images
+  void _loadThumbnailsForImages() {
+    if (_connectedClientIP == null) return;
+    
+    for (final file in _currentFiles) {
+      if (!file.isDirectory && _isImageFile(file.name)) {
+        // Demander la miniature au mobile
+        _server.requestThumbnail(_connectedClientIP!, file.path);
+      }
+    }
   }
   
   // Retour au dossier parent
@@ -960,12 +990,12 @@ class _DesktopScreenState extends State<DesktopScreen> {
   // Affichage en grille pour les fichiers
   Widget _buildFilesGrid() {
     return GridView.builder(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 4,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 16,
-        childAspectRatio: 0.85,
+        crossAxisCount: 6, // 6 colonnes au lieu de 4
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+        childAspectRatio: 0.75, // Ratio ajusté pour des cartes plus compactes
       ),
       itemCount: _currentFiles.length,
       itemBuilder: (context, index) {
@@ -981,8 +1011,8 @@ class _DesktopScreenState extends State<DesktopScreen> {
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey.withOpacity(0.2)),
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(color: Colors.grey.withOpacity(0.15)),
       ),
       child: InkWell(
         onTap: () {
@@ -992,7 +1022,7 @@ class _DesktopScreenState extends State<DesktopScreen> {
             _downloadFile(file);
           }
         },
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -1001,44 +1031,46 @@ class _DesktopScreenState extends State<DesktopScreen> {
               child: Container(
                 decoration: BoxDecoration(
                   color: file.isDirectory
-                      ? Colors.orange.withOpacity(0.1)
+                      ? Colors.orange.withOpacity(0.08)
                       : isImage
-                          ? Colors.grey.withOpacity(0.1)
-                          : Colors.blue.withOpacity(0.1),
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+                          ? Colors.black.withOpacity(0.02)
+                          : Colors.blue.withOpacity(0.08),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
                 ),
                 child: isImage && !file.isDirectory
                     ? _buildImageThumbnail(file)
                     : Center(
                         child: Icon(
                           file.isDirectory ? Icons.folder : _getFileIcon(file.name),
-                          size: 48,
-                          color: file.isDirectory ? Colors.orange : Colors.blue,
+                          size: 40,
+                          color: file.isDirectory 
+                              ? Colors.orange 
+                              : Colors.blue.withOpacity(0.7),
                         ),
                       ),
               ),
             ),
             // Nom et taille
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     file.name,
                     style: TextStyle(
-                      fontSize: 13,
+                      fontSize: 11,
                       fontWeight: FontWeight.w500,
                     ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                   if (!file.isDirectory && file.formattedSize.isNotEmpty) ...[
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     Text(
                       file.formattedSize,
                       style: TextStyle(
-                        fontSize: 11,
+                        fontSize: 9,
                         color: AppColors.textSecondary,
                       ),
                     ),
@@ -1081,30 +1113,45 @@ class _DesktopScreenState extends State<DesktopScreen> {
   
   // Afficher une miniature de l'image
   Widget _buildImageThumbnail(RemoteFile file) {
-    // Pour l'instant, on affiche juste une icône image stylisée
-    // Plus tard, on pourra charger la vraie miniature depuis le mobile
+    // Vérifier si on a la miniature en cache
+    final thumbnail = _thumbnailCache[file.path];
+    
+    if (thumbnail != null) {
+      // Afficher la vraie miniature
+      return ClipRRect(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
+        child: Image.memory(
+          thumbnail,
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+        ),
+      );
+    }
+    
+    // Sinon, afficher une icône en attendant
     return Stack(
       children: [
         Center(
           child: Icon(
             Icons.image,
-            size: 64,
-            color: Colors.blue.withOpacity(0.3),
+            size: 48,
+            color: Colors.blue.withOpacity(0.2),
           ),
         ),
         Positioned(
-          top: 8,
-          right: 8,
+          top: 6,
+          right: 6,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
             decoration: BoxDecoration(
-              color: Colors.blue,
-              borderRadius: BorderRadius.circular(4),
+              color: Colors.blue.withOpacity(0.8),
+              borderRadius: BorderRadius.circular(3),
             ),
             child: Text(
               file.name.split('.').last.toUpperCase(),
               style: TextStyle(
-                fontSize: 10,
+                fontSize: 8,
                 fontWeight: FontWeight.bold,
                 color: Colors.white,
               ),
