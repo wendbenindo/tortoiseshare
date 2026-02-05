@@ -4,19 +4,21 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:image/image.dart' as img;
 
-// Service de partage d'écran mobile
+// Service de partage d'écran mobile optimisé
 class MobileScreenShareService {
   Timer? _captureTimer;
   bool _isSharing = false;
   bool _isCapturing = false; // Pour éviter les captures simultanées
   GlobalKey? _screenKey;
+  DateTime? _lastCaptureTime;
   
   // Callback pour envoyer les frames
   Function(Uint8List)? onFrameCaptured;
   
-  // FPS du partage (réduit pour meilleures performances)
-  int fps = 3; // 3 FPS au lieu de 5 pour réduire la charge
+  // FPS du partage - AUGMENTÉ pour réactivité
+  int fps = 20; // 20 FPS pour fluidité temps réel!
   
   bool get isSharing => _isSharing;
   
@@ -50,37 +52,66 @@ class MobileScreenShareService {
     print('🛑 Partage d\'écran mobile arrêté');
   }
   
-  // Capturer l'écran du mobile
+  // Capturer l'écran du mobile avec qualité optimisée
   Future<void> _captureScreen() async {
     // Éviter les captures simultanées
     if (_isCapturing || _screenKey?.currentContext == null) return;
     
+    // Throttling: éviter de capturer trop rapidement
+    final now = DateTime.now();
+    if (_lastCaptureTime != null) {
+      final elapsed = now.difference(_lastCaptureTime!).inMilliseconds;
+      if (elapsed < 40) return; // Min 40ms entre captures (max 25 FPS)
+    }
+    
     _isCapturing = true;
+    _lastCaptureTime = now;
     
     try {
       // Obtenir le RenderObject
       final RenderRepaintBoundary boundary = 
           _screenKey!.currentContext!.findRenderObject() as RenderRepaintBoundary;
       
-      // Capturer l'image avec résolution très réduite pour performances
-      final ui.Image image = await boundary.toImage(pixelRatio: 0.3);
+      // ✅ HAUTE RÉSOLUTION pour qualité nette (0.8 au lieu de 0.3)
+      final ui.Image image = await boundary.toImage(pixelRatio: 0.8);
       
-      // Convertir directement en PNG
-      final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      // Convertir en RGBA pour traitement
+      final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
       
       if (byteData != null) {
-        final Uint8List pngBytes = byteData.buffer.asUint8List();
+        // Créer image pour compression JPEG
+        final imgLib = img.Image.fromBytes(
+          width: image.width,
+          height: image.height,
+          bytes: byteData.buffer,
+          numChannels: 4,
+        );
         
-        // Log seulement le premier frame pour debug
-        if (_isSharing) {
-          print('📸 Frame: ${pngBytes.length} bytes (${image.width}x${image.height}px)');
+        // ✅ COMPRESSION JPEG intelligente (quality 85 = excellent compromis)
+        final jpegBytes = Uint8List.fromList(
+          img.encodeJpg(imgLib, quality: 85)
+        );
+        
+        // Stats pour debug (première frame seulement)
+        if (_framesCounter == 0) {
+          print('📸 Partage écran: ${image.width}x${image.height}px → ${jpegBytes.length} bytes JPEG');
         }
+        _framesCounter++;
         
-        // Envoyer via callback seulement si pas trop gros
-        if (pngBytes.length < 200000) { // Max 200 KB
-          onFrameCaptured?.call(pngBytes);
+        // ✅ Limite augmentée (500KB au lieu de 200KB)
+        if (jpegBytes.length < 500000) {
+          onFrameCaptured?.call(jpegBytes);
         } else {
-          print('⚠️ Frame trop gros: ${pngBytes.length} bytes, ignoré');
+          print('⚠️ Frame trop gros: ${jpegBytes.length} bytes, compression additionnelle...');
+          // Compression plus agressive si nécessaire
+          final smallerJpeg = Uint8List.fromList(
+            img.encodeJpg(imgLib, quality: 70)
+          );
+          if (smallerJpeg.length < 500000) {
+            onFrameCaptured?.call(smallerJpeg);
+          } else {
+            print('❌ Frame toujours trop gros, ignoré');
+          }
         }
       }
       
@@ -92,11 +123,7 @@ class MobileScreenShareService {
     }
   }
   
-  // Compresser l'image en PNG (méthode non utilisée, gardée pour référence)
-  Future<Uint8List> _compressToPng(ui.Image image) async {
-    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-    return byteData!.buffer.asUint8List();
-  }
+  int _framesCounter = 0;
   
   // Nettoyer les ressources
   void dispose() {

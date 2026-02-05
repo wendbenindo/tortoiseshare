@@ -14,6 +14,7 @@ dependencies:
   path_provider: ^2.1.5  # Pour accéder aux répertoires système
   shared_preferences: ^2.2.2  # Pour sauvegarder les préférences
   screenshot: ^2.1.0  # Pour capturer l'écran
+  image: ^4.0.17  # Pour compression JPEG optimisée
   cupertino_icons: ^1.0.6
   permission_handler: ^11.3.0
   device_info_plus: ^10.1.0

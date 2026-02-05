@@ -17,6 +17,7 @@ flutter run -d android    # Pour mobile (si émulateur/device connecté)
 - ✅ **Transfert de fichiers (mobile → desktop)**
 - ✅ **Explorateur de fichiers (desktop → mobile)**
 - ✅ **File d'attente de téléchargements multiples** ⭐ NOUVEAU FIX!
+- ✅ **Partage d'écran optimisé (20 FPS, qualité nette)** 🚀 NOUVEAU!
 - ✅ Interface utilisateur moderne
 - ✅ Logs en temps réel (desktop)
 - ✅ Détection automatique du réseau local
@@ -89,6 +90,8 @@ lib/
 - `FIX_DOWNLOAD_QUEUE.md` - ⭐ Fix téléchargements multiples (critique)
 - `POLISH_LOGS.md` - ⭐ Nettoyage logs et fix doublons
 - `TEST_MULTIPLE_DOWNLOADS.md` - Guide de test complet
+- `FIX_SCREEN_SHARE_PERFORMANCE.md` - 🚀 Fix partage d'écran (latence + qualité)
+- `SCREEN_SHARE_OPTIMIZATIONS.md` - 🚀 Résumé optimisations partage d'écran
 - `STATUS.md` - Ce fichier
 
 ## 🐛 Bugs récemment corrigés
