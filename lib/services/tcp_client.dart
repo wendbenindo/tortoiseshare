@@ -14,8 +14,10 @@ class TcpClient {
   final FileBrowserService _browserService = FileBrowserService();
   Socket? _socket;
   final StreamController<String> _messageController = StreamController.broadcast();
+  final StreamController<Uint8List> _screenFrameController = StreamController.broadcast();
   
   Stream<String> get messageStream => _messageController.stream;
+  Stream<Uint8List> get screenFrameStream => _screenFrameController.stream;
   bool get isConnected => _socket != null;
   
   // Connecter au serveur
@@ -75,6 +77,20 @@ class TcpClient {
     
     try {
       _socket!.write('TEXT|$message\n');
+      await _socket!.flush();
+      return true;
+    } catch (e) {
+      print('❌ Erreur envoi: $e');
+      return false;
+    }
+  }
+  
+  // Envoyer un message brut (sans préfixe TEXT|)
+  Future<bool> sendRawMessage(String message) async {
+    if (_socket == null) return false;
+    
+    try {
+      _socket!.write('$message\n');
       await _socket!.flush();
       return true;
     } catch (e) {
@@ -158,6 +174,31 @@ class TcpClient {
       
     } catch (e) {
       print('❌ Erreur envoi fichier: $e');
+      return false;
+    }
+  }
+  
+  // Envoyer un frame d'écran
+  Future<bool> sendScreenFrame(Uint8List frameData) async {
+    if (_socket == null) return false;
+    
+    try {
+      // Créer le message complet avec métadonnées + données
+      final header = utf8.encode('SCREEN|FRAME|${frameData.length}\n');
+      
+      // Envoyer header + frame en une seule fois
+      _socket!.add(header);
+      _socket!.add(frameData);
+      
+      // Flush une seule fois à la fin
+      await _socket!.flush();
+      
+      return true;
+    } catch (e) {
+      // Ignorer les erreurs de socket fermé silencieusement
+      if (!e.toString().contains('StreamSink is bound')) {
+        print('❌ Erreur envoi frame: $e');
+      }
       return false;
     }
   }

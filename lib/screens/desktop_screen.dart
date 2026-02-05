@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import '../core/colors.dart';
 import '../core/network_helper.dart';
 import '../services/tcp_server.dart';
+import '../services/screen_share_service.dart';
+import '../screens/mobile_screen_viewer.dart';
 import '../models/remote_file.dart';
 import '../models/download_task.dart';
 
@@ -16,6 +18,7 @@ class DesktopScreen extends StatefulWidget {
 class _DesktopScreenState extends State<DesktopScreen> {
   // Service
   final TcpServer _server = TcpServer();
+  final ScreenShareService _screenShare = ScreenShareService();
   
   // État
   bool _isRunning = false;
@@ -39,6 +42,11 @@ class _DesktopScreenState extends State<DesktopScreen> {
   
   // Cache pour les miniatures d'images
   final Map<String, Uint8List> _thumbnailCache = {};
+  
+  // Pour le partage d'écran
+  bool _isSharingScreen = false;
+  bool _isViewingMobileScreen = false;
+  GlobalKey<MobileScreenViewerState>? _viewerKey;
   
   @override
   void initState() {
@@ -249,7 +257,62 @@ class _DesktopScreenState extends State<DesktopScreen> {
           _thumbnailCache[filePath] = thumbnailData;
         });
         break;
+        
+      case ServerMessageType.screenShareStart:
+        // Début du partage d'écran mobile
+        print('🖥️ Desktop: Réception SCREEN|START, ouverture du viewer...');
+        _openMobileScreenViewer();
+        break;
+        
+      case ServerMessageType.screenShareStop:
+        // Fin du partage d'écran mobile
+        print('🖥️ Desktop: Réception SCREEN|STOP, fermeture du viewer...');
+        if (_isViewingMobileScreen && Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
+        setState(() {
+          _isViewingMobileScreen = false;
+        });
+        break;
+        
+      case ServerMessageType.screenFrame:
+        // Frame d'écran reçu
+        if (_isViewingMobileScreen && _viewerKey?.currentState != null) {
+          final frameData = message.data['frameData'] as Uint8List;
+          _viewerKey!.currentState!.updateFrame(frameData);
+        }
+        break;
     }
+  }
+  
+  // Ouvrir la visualisation de l'écran mobile
+  void _openMobileScreenViewer() {
+    if (_isViewingMobileScreen) return;
+    
+    setState(() {
+      _isViewingMobileScreen = true;
+    });
+    
+    _viewerKey = GlobalKey<MobileScreenViewerState>();
+    
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => MobileScreenViewer(
+          key: _viewerKey,
+          onClose: () {
+            Navigator.pop(context);
+            setState(() {
+              _isViewingMobileScreen = false;
+            });
+          },
+        ),
+      ),
+    );
+  }
+  
+  // Mettre à jour le frame de l'écran mobile
+  void _updateMobileScreenFrame(Uint8List frameData) {
+    _viewerKey?.currentState?.updateFrame(frameData);
   }
   
   String _formatBytes(int bytes) {
@@ -499,9 +562,57 @@ class _DesktopScreenState extends State<DesktopScreen> {
     _server.requestFileDownload(nextTask.from, nextTask.filePath);
   }
   
+  // Démarrer/arrêter le partage d'écran
+  Future<void> _toggleScreenShare() async {
+    if (_connectedClientIP == null) {
+      _showSnackBar('Aucun appareil connecté');
+      return;
+    }
+    
+    if (_isSharingScreen) {
+      // Arrêter le partage
+      _screenShare.stopSharing();
+      await _server.notifyScreenShareStop(_connectedClientIP!);
+      
+      setState(() {
+        _isSharingScreen = false;
+      });
+      
+      _addLog('🛑 Partage d\'écran arrêté', LogType.screen, Icons.stop_screen_share);
+    } else {
+      // Démarrer le partage
+      _screenShare.onFrameCaptured = (frameData) {
+        _server.sendScreenFrame(_connectedClientIP!, frameData);
+      };
+      
+      final success = await _screenShare.startSharing();
+      
+      if (success) {
+        await _server.notifyScreenShareStart(_connectedClientIP!);
+        
+        setState(() {
+          _isSharingScreen = true;
+        });
+        
+        _addLog('🖥️ Partage d\'écran démarré', LogType.screen, Icons.screen_share);
+      } else {
+        _showSnackBar('Erreur: Impossible de capturer l\'écran');
+      }
+    }
+  }
+  
+  void _showSnackBar(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), duration: Duration(seconds: 2)),
+      );
+    }
+  }
+  
   @override
   void dispose() {
     _server.dispose();
+    _screenShare.dispose();
     super.dispose();
   }
   
@@ -643,6 +754,28 @@ class _DesktopScreenState extends State<DesktopScreen> {
                 label: Text('Explorateur', style: TextStyle(color: Colors.white)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
+                  minimumSize: Size(double.infinity, 48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: ElevatedButton.icon(
+                onPressed: _toggleScreenShare,
+                icon: Icon(
+                  _isSharingScreen ? Icons.stop_screen_share : Icons.screen_share,
+                  color: Colors.white,
+                ),
+                label: Text(
+                  _isSharingScreen ? 'Arrêter partage' : 'Partager l\'écran',
+                  style: TextStyle(color: Colors.white),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _isSharingScreen ? AppColors.error : Colors.purple,
                   minimumSize: Size(double.infinity, 48),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),

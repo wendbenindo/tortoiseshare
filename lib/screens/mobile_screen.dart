@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -7,9 +9,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/colors.dart';
 import '../services/network_scanner.dart';
 import '../services/tcp_client.dart';
+import '../services/mobile_screen_share_service.dart';
 import '../models/device.dart';
 import '../models/connection_status.dart';
 import 'permissions_help_screen.dart';
+import 'screen_share_viewer_screen.dart';
 
 class MobileScreen extends StatefulWidget {
   const MobileScreen({super.key});
@@ -22,6 +26,10 @@ class _MobileScreenState extends State<MobileScreen> {
   // Services
   final NetworkScanner _scanner = NetworkScanner();
   final TcpClient _client = TcpClient();
+  final MobileScreenShareService _screenShare = MobileScreenShareService();
+  
+  // GlobalKey pour capturer l'écran
+  final GlobalKey _screenKey = GlobalKey();
   
   // État
   AppConnectionState _connectionState = AppConnectionState.idle();
@@ -36,6 +44,11 @@ class _MobileScreenState extends State<MobileScreen> {
   bool _isTransferring = false;
   double _transferProgress = 0.0;
   String? _currentFileName;
+  
+  // Pour le partage d'écran
+  bool _isReceivingScreen = false;
+  bool _isSharingScreen = false;
+  final StreamController<Uint8List> _screenFrameController = StreamController.broadcast();
   
   // Controllers
   final TextEditingController _messageController = TextEditingController();
@@ -266,6 +279,77 @@ class _MobileScreenState extends State<MobileScreen> {
         _isTransferring = false;
       });
       _showSnackBar('❌ Fichier refusé par le PC', AppColors.error);
+    } else if (message == 'SCREEN|START') {
+      // Début du partage d'écran
+      setState(() {
+        _isReceivingScreen = true;
+      });
+      _openScreenShareViewer();
+    } else if (message == 'SCREEN|STOP') {
+      // Fin du partage d'écran
+      setState(() {
+        _isReceivingScreen = false;
+      });
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+    }
+  }
+  
+  // Ouvrir l'écran de visualisation du partage
+  void _openScreenShareViewer() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => ScreenShareViewerScreen(
+          frameStream: _screenFrameController.stream,
+          onClose: () {
+            Navigator.pop(context);
+            setState(() {
+              _isReceivingScreen = false;
+            });
+          },
+        ),
+      ),
+    );
+  }
+  
+  // Démarrer/arrêter le partage de l'écran mobile
+  Future<void> _toggleMobileScreenShare() async {
+    if (!_client.isConnected) {
+      _showSnackBar('Non connecté au PC', AppColors.error);
+      return;
+    }
+    
+    if (_isSharingScreen) {
+      // Arrêter le partage
+      _screenShare.stopSharing();
+      await _client.sendRawMessage('SCREEN|STOP');
+      
+      setState(() {
+        _isSharingScreen = false;
+      });
+      
+      _showSnackBar('Partage arrêté', AppColors.info);
+    } else {
+      // Démarrer le partage
+      _screenShare.onFrameCaptured = (frameData) async {
+        // Envoyer le frame au PC
+        await _client.sendScreenFrame(frameData);
+      };
+      
+      final success = await _screenShare.startSharing(_screenKey);
+      
+      if (success) {
+        await _client.sendRawMessage('SCREEN|START');
+        
+        setState(() {
+          _isSharingScreen = true;
+        });
+        
+        _showSnackBar('Partage démarré', AppColors.success);
+      } else {
+        _showSnackBar('Erreur de partage', AppColors.error);
+      }
     }
   }
   
@@ -374,12 +458,15 @@ class _MobileScreenState extends State<MobileScreen> {
   
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: _buildAppBar(),
-      body: _connectionState.isConnected 
-          ? _buildConnectedView() 
-          : _buildScanView(),
+    return RepaintBoundary(
+      key: _screenKey,
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: _buildAppBar(),
+        body: _connectionState.isConnected 
+            ? _buildConnectedView() 
+            : _buildScanView(),
+      ),
     );
   }
   
@@ -776,10 +863,12 @@ class _MobileScreenState extends State<MobileScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            _buildActionButton(Icons.screen_share, 'Écran', () async {
-              await _client.requestScreenShare();
-              _showSnackBar('Demande envoyée', AppColors.info);
-            }),
+            _buildActionButton(
+              _isSharingScreen ? Icons.stop_screen_share : Icons.screen_share,
+              _isSharingScreen ? 'Arrêter' : 'Partager',
+              _toggleMobileScreenShare,
+              isActive: _isSharingScreen,
+            ),
             _buildActionButton(Icons.file_upload, 'Fichier', () {
               _pickAndSendFile();
             }),
@@ -793,23 +882,39 @@ class _MobileScreenState extends State<MobileScreen> {
     );
   }
   
-  Widget _buildActionButton(IconData icon, String label, VoidCallback onTap) {
+  Widget _buildActionButton(IconData icon, String label, VoidCallback onTap, {bool isActive = false}) {
     return Column(
       children: [
         Container(
           width: 60,
           height: 60,
           decoration: BoxDecoration(
-            color: AppColors.primary.withOpacity(0.1),
+            color: isActive 
+                ? AppColors.error.withOpacity(0.2) 
+                : AppColors.primary.withOpacity(0.1),
             borderRadius: BorderRadius.circular(15),
+            border: isActive 
+                ? Border.all(color: AppColors.error, width: 2)
+                : null,
           ),
           child: IconButton(
-            icon: Icon(icon, color: AppColors.primary, size: 28),
+            icon: Icon(
+              icon, 
+              color: isActive ? AppColors.error : AppColors.primary, 
+              size: 28,
+            ),
             onPressed: onTap,
           ),
         ),
         const SizedBox(height: 8),
-        Text(label, style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+        Text(
+          label, 
+          style: TextStyle(
+            fontSize: 12, 
+            color: isActive ? AppColors.error : AppColors.textSecondary,
+            fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
       ],
     );
   }

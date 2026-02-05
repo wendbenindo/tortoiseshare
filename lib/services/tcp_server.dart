@@ -88,6 +88,9 @@ class TcpServer {
     // Buffer pour accumuler les données
     List<int> buffer = [];
     bool receivingFile = false;
+    bool receivingFrame = false;
+    int frameSize = 0;
+    int frameBytesNeeded = 0;
     
     // Écouter les messages du client
     client.listen(
@@ -102,19 +105,66 @@ class TcpServer {
             receivingFile = false;
             buffer.clear();
           });
+        } else if (receivingFrame) {
+          // Mode réception de frame d'écran
+          if (buffer.length >= frameBytesNeeded) {
+            // On a reçu tout le frame
+            final frameData = Uint8List.fromList(buffer.sublist(0, frameBytesNeeded));
+            buffer.removeRange(0, frameBytesNeeded);
+            
+            // Envoyer le frame au viewer
+            _messageController.add(ServerMessage(
+              type: ServerMessageType.screenFrame,
+              data: {'from': ip, 'frameData': frameData},
+            ));
+            
+            receivingFrame = false;
+            frameBytesNeeded = 0;
+          }
+          // Sinon, attendre plus de données
         } else {
           // Mode réception de messages texte
           // Chercher les lignes complètes (terminées par \n)
-          _processTextBuffer(buffer, ip, (message) {
-            if (message.startsWith('FILE|START|')) {
-              // Début de réception de fichier
-              receivingFile = true;
-              _handleFileStart(message, ip);
-            } else {
-              // Message normal
-              _handleClientMessage(message, ip);
+          while (true) {
+            final newlineIndex = buffer.indexOf(10); // 10 = '\n'
+            if (newlineIndex == -1) break; // Pas de ligne complète
+            
+            // Extraire la ligne
+            final lineBytes = buffer.sublist(0, newlineIndex);
+            buffer.removeRange(0, newlineIndex + 1);
+            
+            // Vérifier si c'est un message texte valide
+            if (lineBytes.isEmpty) continue;
+            
+            // Essayer de décoder en UTF-8
+            try {
+              final message = utf8.decode(lineBytes, allowMalformed: false).trim();
+              
+              if (message.startsWith('FILE|START|')) {
+                // Début de réception de fichier
+                receivingFile = true;
+                _handleFileStart(message, ip);
+                break; // Sortir de la boucle while
+              } else if (message.startsWith('SCREEN|FRAME|')) {
+                // Début de réception de frame d'écran
+                final parts = message.split('|');
+                if (parts.length >= 3) {
+                  frameSize = int.tryParse(parts[2]) ?? 0;
+                  if (frameSize > 0) {
+                    receivingFrame = true;
+                    frameBytesNeeded = frameSize;
+                    break; // Sortir de la boucle while pour passer en mode frame
+                  }
+                }
+              } else if (message.isNotEmpty) {
+                // Message normal
+                _handleClientMessage(message, ip);
+              }
+            } catch (e) {
+              // Ignorer silencieusement les erreurs de décodage UTF-8
+              // (données binaires mélangées)
             }
-          });
+          }
         }
       },
       onDone: () {
@@ -162,29 +212,6 @@ class TcpServer {
         'fileSize': fileSize,
       },
     ));
-  }
-  
-  // Traiter le buffer en mode texte
-  void _processTextBuffer(List<int> buffer, String clientIP, Function(String) onMessage) {
-    // Chercher les lignes complètes (terminées par \n)
-    while (true) {
-      final newlineIndex = buffer.indexOf(10); // 10 = '\n'
-      if (newlineIndex == -1) break; // Pas de ligne complète
-      
-      // Extraire la ligne
-      final lineBytes = buffer.sublist(0, newlineIndex);
-      buffer.removeRange(0, newlineIndex + 1);
-      
-      // Décoder en UTF-8 (seulement les messages texte)
-      try {
-        final message = utf8.decode(lineBytes).trim();
-        if (message.isNotEmpty) {
-          onMessage(message);
-        }
-      } catch (e) {
-        print('❌ Erreur décodage UTF-8: $e');
-      }
-    }
   }
   
   // Vérifier si on a reçu la fin du fichier
@@ -302,6 +329,20 @@ class TcpServer {
         type: ServerMessageType.screenRequest,
         data: {'from': clientIP},
       ));
+    } else if (message == 'SCREEN|START') {
+      // Le mobile commence à partager son écran
+      print('📱 Début partage écran mobile de $clientIP');
+      _messageController.add(ServerMessage(
+        type: ServerMessageType.screenShareStart,
+        data: {'from': clientIP},
+      ));
+    } else if (message == 'SCREEN|STOP') {
+      // Le mobile arrête de partager son écran
+      print('🛑 Fin partage écran mobile de $clientIP');
+      _messageController.add(ServerMessage(
+        type: ServerMessageType.screenShareStop,
+        data: {'from': clientIP},
+      ));
     } else if (message.startsWith('MOBILE|')) {
       _messageController.add(ServerMessage(
         type: ServerMessageType.mobileConnected,
@@ -377,6 +418,37 @@ class TcpServer {
     await sendToClient(clientIP, 'FILE|THUMBNAIL|$filePath');
   }
   
+  // Envoyer un frame de partage d'écran
+  Future<void> sendScreenFrame(String clientIP, Uint8List frameData) async {
+    try {
+      for (final client in _clients) {
+        if (client.remoteAddress.address == clientIP) {
+          // Envoyer les métadonnées
+          client.write('SCREEN|FRAME|${frameData.length}\n');
+          await client.flush();
+          
+          // Envoyer les données
+          client.add(frameData);
+          await client.flush();
+          
+          return;
+        }
+      }
+    } catch (e) {
+      print('❌ Erreur envoi frame: $e');
+    }
+  }
+  
+  // Notifier le début du partage d'écran
+  Future<void> notifyScreenShareStart(String clientIP) async {
+    await sendToClient(clientIP, 'SCREEN|START');
+  }
+  
+  // Notifier la fin du partage d'écran
+  Future<void> notifyScreenShareStop(String clientIP) async {
+    await sendToClient(clientIP, 'SCREEN|STOP');
+  }
+  
   // Nettoyer les ressources
   void dispose() {
     stopServer();
@@ -406,6 +478,9 @@ enum ServerMessageType {
   clientDisconnected,
   textMessage,
   screenRequest,
+  screenShareStart,  // Début du partage d'écran
+  screenShareStop,   // Fin du partage d'écran
+  screenFrame,       // Frame d'écran reçu
   mobileConnected,
   alert,
   fileStart,
