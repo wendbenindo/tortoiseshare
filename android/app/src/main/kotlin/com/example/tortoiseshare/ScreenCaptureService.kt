@@ -78,18 +78,32 @@ class ScreenCaptureService : Service() {
         }
     }
 
+    private var isProcessing = false
+
     fun startProjection(resultCode: Int, data: Intent, width: Int, height: Int, density: Int) {
         val mpManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         mediaProjection = mpManager.getMediaProjection(resultCode, data)
 
-        this.screenWidth = width
-        this.screenHeight = height
-        this.screenDensity = density
+        // Optimisation : Réduire la résolution pour la performance (max 600px de large)
+        val targetWidth = 600
+        if (width > targetWidth) {
+            val ratio = height.toFloat() / width.toFloat()
+            this.screenWidth = targetWidth
+            this.screenHeight = (targetWidth * ratio).toInt()
+            this.screenDensity = (density * (targetWidth.toFloat() / width.toFloat())).toInt()
+        } else {
+            this.screenWidth = width
+            this.screenHeight = height
+            this.screenDensity = density
+        }
+        
+        Log.d("TortoiseStream", "Capture resolution: ${this.screenWidth}x${this.screenHeight}")
 
         createVirtualDisplay()
     }
 
     private fun createVirtualDisplay() {
+        // maxImages = 1 pour forcer le temps réel (on rate des frames si trop lent)
         imageReader = ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 2)
         
         mediaProjection?.createVirtualDisplay(
@@ -101,12 +115,22 @@ class ScreenCaptureService : Service() {
         ).also { virtualDisplay = it }
 
         imageReader?.setOnImageAvailableListener({ reader ->
+            // Mécanisme Anti-Lag : Si on traite déjà une image, on ignore la suivante !
+            if (isProcessing) {
+                // Important : Il faut quand même acquérir et fermer l'image sinon le buffer se bloque
+                val discarded = reader.acquireLatestImage()
+                discarded?.close()
+                return@setOnImageAvailableListener
+            }
+
             val image = reader.acquireLatestImage()
             if (image != null) {
+                isProcessing = true
                 processImage(image)
                 image.close()
+                isProcessing = false
             }
-        }, Handler(Looper.getMainLooper()))
+        }, Handler(Looper.getMainLooper())) // Idéalement utiliser un thread background
     }
 
     private fun processImage(image: Image) {
@@ -133,7 +157,7 @@ class ScreenCaptureService : Service() {
 
         // Compresser en JPEG
         val stream = ByteArrayOutputStream()
-        finalBitmap.compress(Bitmap.CompressFormat.JPEG, 80, stream) // Qualité 80 suffisante
+        finalBitmap.compress(Bitmap.CompressFormat.JPEG, 65, stream) // 65 = Bon compromis Vitesse/Qualité
         val byteArray = stream.toByteArray()
 
         // Envoyer

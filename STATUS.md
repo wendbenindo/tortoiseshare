@@ -43,10 +43,17 @@ lib/
 │   ├── network_scanner.dart           # Scanner réseau
 │   ├── file_transfer_service.dart     # Service transfert fichiers
 │   └── file_browser_service.dart      # Service explorateur fichiers
-└── screens/                           # ✅ Écrans UI
-    ├── mobile_screen.dart             # Interface mobile
-    ├── desktop_screen.dart            # Interface desktop
-    └── permissions_help_screen.dart   # Aide permissions Android
+- [x] **Screen Sharing Optimization (Turbo Mode)**
+    - [x] Switch to native Android MediaProjection (Full screen capture)
+    - [x] Smart Resizing (Max 600px width) to lower bandwidth
+    - [x] Anti-Lag System (Frame Dropping logic in native code)
+    - [x] Optimized JPEG compression (Quality 65 for speed)
+- [x] **Remote Control (Mouse Basic)**
+    - [x] Create Android Accessibility Service
+    - [x] Implement Desktop tap detection & coordinate mapping
+    - [x] Implement TCP protocol for clicks (CLICK|x|y)
+    - [x] Add UI to enable permissions
+- [ ] **Remote Control (Advanced)** (Next Step)ermissions Android
 ```
 
 ## 🎉 Features complètes
