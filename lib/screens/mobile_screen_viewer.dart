@@ -43,18 +43,28 @@ class MobileScreenViewerState extends State<MobileScreenViewer> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Colors.white,
       body: Column(
         children: [
           // Header
           Container(
             padding: const EdgeInsets.all(16),
-            color: AppColors.primary,
+            decoration: BoxDecoration(
+              color: AppColors.primary,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 4,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
             child: Row(
               children: [
                 IconButton(
                   onPressed: widget.onClose,
                   icon: Icon(Icons.arrow_back, color: Colors.white),
+                  tooltip: 'Fermer',
                 ),
                 const SizedBox(width: 12),
                 Icon(Icons.smartphone, color: Colors.white, size: 24),
@@ -82,6 +92,9 @@ class MobileScreenViewerState extends State<MobileScreenViewer> {
                     ],
                   ),
                 ),
+                
+                const SizedBox(width: 12),
+                
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
@@ -108,47 +121,75 @@ class MobileScreenViewerState extends State<MobileScreenViewer> {
             ),
           ),
           
-          // Affichage du frame
+          // Affichage du frame avec cadre de téléphone
           Expanded(
-            child: Center(
-              child: _currentFrame != null
-                  ? Container(
-                      constraints: BoxConstraints(
-                        maxWidth: 400,
-                        maxHeight: 800,
-                      ),
-                      decoration: BoxDecoration(
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.3),
-                            blurRadius: 20,
-                            spreadRadius: 5,
+            child: _currentFrame != null
+                ? InteractiveViewer(
+                    minScale: 0.5,
+                    maxScale: 4.0,
+                    child: Center(
+                      child: Container(
+                        margin: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: Colors.black, width: 2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.15),
+                              blurRadius: 12,
+                              spreadRadius: 2,
+                              offset: Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: Image.memory(
+                            _currentFrame!,
+                            fit: BoxFit.contain,
+                            gaplessPlayback: true,
+                            filterQuality: FilterQuality.medium,
                           ),
-                        ],
+                        ),
                       ),
-                      child: Image.memory(
-                        _currentFrame!,
-                        fit: BoxFit.contain,
-                        gaplessPlayback: true,
-                      ),
-                    )
-                  : Column(
+                    ),
+                  )
+                : Center(
+                    child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        CircularProgressIndicator(color: AppColors.primary),
-                        const SizedBox(height: 20),
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withOpacity(0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.smartphone,
+                            size: 80,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        const SizedBox(height: 30),
                         Text(
                           'En attente du partage d\'écran...',
-                          style: TextStyle(color: Colors.white70, fontSize: 16),
+                          style: TextStyle(
+                            color: Colors.grey[700],
+                            fontSize: 18,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 12),
                         Text(
                           'Démarrez le partage depuis le mobile',
-                          style: TextStyle(color: Colors.white54, fontSize: 14),
+                          style: TextStyle(
+                            color: Colors.grey[500],
+                            fontSize: 14,
+                          ),
                         ),
                       ],
                     ),
-            ),
+                  ),
           ),
         ],
       ),
