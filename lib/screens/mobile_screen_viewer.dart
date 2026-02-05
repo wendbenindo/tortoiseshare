@@ -100,7 +100,7 @@ class MobileScreenViewerState extends State<MobileScreenViewer> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Colors.white,
       body: Column(
         children: [
           // Header
@@ -147,31 +147,47 @@ class MobileScreenViewerState extends State<MobileScreenViewer> {
           
           // Image interactive
           Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                return GestureDetector(
-                  onTapDown: (details) => _handleTapDown(
-                    details, 
-                    constraints.maxWidth, 
-                    constraints.maxHeight
-                  ),
-                  child: Container(
-                    color: Colors.black,
-                    width: double.infinity,
-                    height: double.infinity,
-                    child: Center(
-                      child: _currentFrame != null
-                          ? Image.memory(
-                              _currentFrame!,
-                              fit: BoxFit.contain,
-                              gaplessPlayback: true,
-                              filterQuality: FilterQuality.high,
-                            )
-                          : CircularProgressIndicator(color: Colors.white),
+            child: Container(
+              padding: const EdgeInsets.all(20), // Espacement autour du téléphone
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return GestureDetector(
+                    onTapDown: (details) => _handleTapDown(
+                      details, 
+                      constraints.maxWidth, 
+                      constraints.maxHeight
                     ),
-                  ),
-                );
-              }
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(19),
+                        border: Border.all(color: Colors.black, width: 2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.15),
+                            blurRadius: 12,
+                            spreadRadius: 2,
+                            offset: Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(17), // 19 - 2 (border width)
+                        child: _currentFrame != null
+                            ? Image.memory(
+                                _currentFrame!,
+                                fit: BoxFit.contain,
+                                gaplessPlayback: true,
+                                filterQuality: FilterQuality.high,
+                              )
+                            : Center(
+                                child: CircularProgressIndicator(color: AppColors.primary),
+                              ),
+                      ),
+                    ),
+                  );
+                }
+              ),
             ),
           ),
         ],
