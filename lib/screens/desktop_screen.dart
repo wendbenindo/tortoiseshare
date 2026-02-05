@@ -305,6 +305,13 @@ class _DesktopScreenState extends State<DesktopScreen> {
               _isViewingMobileScreen = false;
             });
           },
+          onTap: (x, y) {
+            // Envoyer la commande de clic au mobile
+            if (_connectedClientIP != null) {
+              print('🖱️ Envoi CLIC vers $_connectedClientIP: $x, $y');
+              _server.sendToClient(_connectedClientIP!, 'CLICK|$x|$y\n');
+            }
+          },
         ),
       ),
     );

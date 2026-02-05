@@ -16,6 +16,9 @@ class TcpClient {
   final StreamController<String> _messageController = StreamController.broadcast();
   final StreamController<Uint8List> _screenFrameController = StreamController.broadcast();
   
+  // Callback pour les clics reçus du PC
+  Function(double x, double y)? onClickReceived;
+
   Stream<String> get messageStream => _messageController.stream;
   Stream<Uint8List> get screenFrameStream => _screenFrameController.stream;
   bool get isConnected => _socket != null;
@@ -39,6 +42,15 @@ class TcpClient {
             _handleFileListRequest(message);
           } else if (message.startsWith('FILE|DOWNLOAD|')) {
             _handleFileDownloadRequest(message);
+          } else if (message.startsWith('CLICK|')) {
+            // Gérer les clics de contrôle à distance
+            final parts = message.split('|');
+            if (parts.length >= 3) {
+              final x = double.tryParse(parts[1]) ?? 0.0;
+              final y = double.tryParse(parts[2]) ?? 0.0;
+              onClickReceived?.call(x, y);
+              print('🖱️ Clic reçu: $x, $y');
+            }
           } else {
             _messageController.add(message);
           }

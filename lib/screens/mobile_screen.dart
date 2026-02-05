@@ -79,6 +79,27 @@ class _MobileScreenState extends State<MobileScreen> {
         });
       }
     };
+    
+    // Configurer la réception des clics
+    _client.onClickReceived = (xPercent, yPercent) {
+      if (mounted) {
+        // Récupérer la taille réelle de l'écran
+        try {
+          // On utilise window pour avoir la taille physique directement
+          final view = View.of(context);
+          final width = view.physicalSize.width;
+          final height = view.physicalSize.height;
+          
+          final realX = xPercent * width;
+          final realY = yPercent * height;
+          
+          print('🖱️ Clic reçu: ${xPercent.toStringAsFixed(2)}, ${yPercent.toStringAsFixed(2)} -> $realX, $realY');
+          _screenShare.performClick(realX, realY);
+        } catch (e) {
+          print('❌ Erreur calcul clic: $e');
+        }
+      }
+    };
   }
   
   // Charger le dernier PC connu
@@ -855,6 +876,51 @@ class _MobileScreenState extends State<MobileScreen> {
                   );
                 },
                 child: Text('Aide', style: TextStyle(color: AppColors.info)),
+              ),
+            ],
+          ),
+        ),
+        
+        // Carte d'activation du contrôle à distance
+        Container(
+          margin: const EdgeInsets.only(bottom: 16),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.purple.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.purple.withOpacity(0.3)),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.touch_app, color: Colors.purple, size: 24),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Contrôle à distance',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Activer l\'accessibilité pour cliquer',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                   _screenShare.openAccessibilitySettings();
+                },
+                child: Text('Activer', style: TextStyle(color: Colors.purple)),
               ),
             ],
           ),
