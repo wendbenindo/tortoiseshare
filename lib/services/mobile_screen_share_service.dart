@@ -17,8 +17,8 @@ class MobileScreenShareService {
   // Callback pour envoyer les frames
   Function(Uint8List)? onFrameCaptured;
   
-  // FPS du partage - AUGMENTÉ pour réactivité
-  int fps = 20; // 20 FPS pour fluidité temps réel!
+  // FPS du partage - MAXIMISÉ pour instantanéité
+  int fps = 30; // 30 FPS pour réactivité quasi-instantanée!
   
   bool get isSharing => _isSharing;
   
@@ -61,7 +61,7 @@ class MobileScreenShareService {
     final now = DateTime.now();
     if (_lastCaptureTime != null) {
       final elapsed = now.difference(_lastCaptureTime!).inMilliseconds;
-      if (elapsed < 40) return; // Min 40ms entre captures (max 25 FPS)
+      if (elapsed < 28) return; // Min 28ms entre captures (max 35 FPS)
     }
     
     _isCapturing = true;
@@ -87,9 +87,9 @@ class MobileScreenShareService {
           numChannels: 4,
         );
         
-        // ✅ COMPRESSION JPEG intelligente (quality 85 = excellent compromis)
+        // ✅ COMPRESSION JPEG haute qualité (quality 90 pour netteté maximale)
         final jpegBytes = Uint8List.fromList(
-          img.encodeJpg(imgLib, quality: 85)
+          img.encodeJpg(imgLib, quality: 90)
         );
         
         // Stats pour debug (première frame seulement)
