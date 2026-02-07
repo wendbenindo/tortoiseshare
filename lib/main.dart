@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatf
 import 'core/colors.dart';
 import 'screens/mobile_screen.dart';
 import 'screens/desktop_screen.dart';
+import 'screens/splash_screen.dart';
 
 void main() {
   runApp(const TortoiseShareApp());
@@ -17,7 +18,7 @@ class TortoiseShareApp extends StatelessWidget {
     return MaterialApp(
       title: 'TortoiseShare',
       theme: ThemeData(
-        primarySwatch: Colors.green,
+        primarySwatch: Colors.orange, // Changé pour orange
         primaryColor: AppColors.primary,
         scaffoldBackgroundColor: AppColors.background,
         cardTheme: CardThemeData(
@@ -36,9 +37,9 @@ class TortoiseShareApp extends StatelessWidget {
   Widget _getHomeScreen() {
     if (defaultTargetPlatform == TargetPlatform.android || 
         defaultTargetPlatform == TargetPlatform.iOS) {
-      return const MobileScreen(); // Application mobile refactorisée
+      return const SplashScreen(); // Commencer par le splash screen sur mobile
     } else {
-      return const DesktopScreen(); // Application desktop refactorisée
+      return const DesktopScreen(); // Desktop directement (pas de splash)
     }
   }
 }

@@ -10,6 +10,7 @@ import '../core/colors.dart';
 import '../services/network_scanner.dart';
 import '../services/tcp_client.dart';
 import '../services/mobile_screen_share_service.dart';
+import '../services/connection_history_service.dart';
 import '../models/device.dart';
 import '../models/connection_status.dart';
 import 'permissions_help_screen.dart';
@@ -50,9 +51,6 @@ class _MobileScreenState extends State<MobileScreen> {
   bool _isSharingScreen = false;
   final StreamController<Uint8List> _screenFrameController = StreamController.broadcast();
   
-  // Controllers
-  final TextEditingController _messageController = TextEditingController();
-  
   @override
   void initState() {
     super.initState();
@@ -62,8 +60,8 @@ class _MobileScreenState extends State<MobileScreen> {
       _checkPermissions();
     }
     
-    // Charger le dernier PC connu
-    _loadLastKnownPC();
+    // Charger l'historique des connexions
+    _loadConnectionHistory();
     
     // Écouter les messages du serveur
     _client.messageStream.listen((message) {
@@ -102,35 +100,53 @@ class _MobileScreenState extends State<MobileScreen> {
     };
   }
   
-  // Charger le dernier PC connu
-  Future<void> _loadLastKnownPC() async {
-    final prefs = await SharedPreferences.getInstance();
-    final lastIP = prefs.getString('last_pc_ip');
-    final lastName = prefs.getString('last_pc_name');
+  // Charger l'historique des connexions et essayer de se reconnecter
+  Future<void> _loadConnectionHistory() async {
+    // Charger l'historique
+    final history = await ConnectionHistoryService.getConnectionHistory();
     
-    if (lastIP != null) {
-      // Ajouter le PC connu à la liste
-      final knownDevice = Device(
-        id: lastIP,
-        name: lastName ?? 'PC TortoiseShare',
-        ipAddress: lastIP,
-        type: DeviceType.desktop,
-        connectedAt: DateTime.now(),
-      );
+    if (history.isNotEmpty && mounted) {
+      setState(() {
+        _foundDevices.addAll(history);
+      });
       
-      if (mounted) {
-        setState(() {
-          _foundDevices.add(knownDevice);
-        });
+      // Essayer de se reconnecter automatiquement à la dernière connexion
+      final lastConnection = await ConnectionHistoryService.getLastConnection();
+      if (lastConnection != null) {
+        print('🔄 Tentative de reconnexion automatique à ${lastConnection.name}...');
+        _tryAutoReconnect(lastConnection);
       }
     }
   }
   
-  // Sauvegarder le PC trouvé
-  Future<void> _saveLastKnownPC(String ip, String name) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('last_pc_ip', ip);
-    await prefs.setString('last_pc_name', name);
+  // Essayer de se reconnecter automatiquement
+  Future<void> _tryAutoReconnect(Device device) async {
+    setState(() {
+      _connectionState = AppConnectionState(
+        status: ConnectionStatus.connecting,
+        message: '🔄 Reconnexion automatique...',
+      );
+    });
+    
+    final success = await _client.connect(device.ipAddress);
+    
+    if (mounted) {
+      if (success) {
+        setState(() {
+          _connectedDevice = device;
+          _connectionState = AppConnectionState.connected(device.name);
+        });
+        _showSnackBar('Reconnecté à ${device.name}', AppColors.success);
+      } else {
+        setState(() {
+          _connectionState = AppConnectionState(
+            status: ConnectionStatus.idle,
+            message: '📱 Prêt à scanner le réseau',
+          );
+        });
+        print('❌ Reconnexion automatique échouée');
+      }
+    }
   }
 
   // Vérifier et demander les permissions
@@ -268,15 +284,14 @@ class _MobileScreenState extends State<MobileScreen> {
         if (success) {
           _connectedDevice = device;
           _connectionState = AppConnectionState.connected(device.name);
-          
-          // Sauvegarder le PC pour la prochaine fois
-          _saveLastKnownPC(device.ipAddress, device.name);
         } else {
           _connectionState = AppConnectionState.error('Connexion échouée');
         }
       });
       
       if (success) {
+        // Sauvegarder dans l'historique des connexions
+        await ConnectionHistoryService.saveSuccessfulConnection(device);
         _showSnackBar('Connexion établie', AppColors.success);
       } else {
         _showSnackBar('Erreur de connexion', AppColors.error);
@@ -334,7 +349,115 @@ class _MobileScreenState extends State<MobileScreen> {
     );
   }
   
-  // Démarrer/arrêter le partage de l'écran mobile
+  // Partager un lien
+  Future<void> _shareLink() async {
+    if (!_client.isConnected) {
+      _showSnackBar('Non connecté au PC', AppColors.error);
+      return;
+    }
+
+    // Dialog pour saisir le lien
+    final TextEditingController linkController = TextEditingController();
+    
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Partager un lien'),
+        content: TextField(
+          controller: linkController,
+          decoration: InputDecoration(
+            hintText: 'https://example.com',
+            prefixIcon: Icon(Icons.link, color: AppColors.primary),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: AppColors.primary),
+            ),
+          ),
+          keyboardType: TextInputType.url,
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final link = linkController.text.trim();
+              if (link.isNotEmpty) {
+                Navigator.pop(context, link);
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+            child: Text('Partager', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && result.isNotEmpty) {
+      await _client.sendMessage('LINK|$result');
+      _showSnackBar('Lien partagé', AppColors.success);
+    }
+  }
+
+  // Partager du texte
+  Future<void> _shareText() async {
+    if (!_client.isConnected) {
+      _showSnackBar('Non connecté au PC', AppColors.error);
+      return;
+    }
+
+    // Dialog pour saisir le texte
+    final TextEditingController textController = TextEditingController();
+    
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Partager du texte'),
+        content: TextField(
+          controller: textController,
+          decoration: InputDecoration(
+            hintText: 'Tapez votre texte ici...',
+            prefixIcon: Icon(Icons.text_fields, color: AppColors.primary),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: AppColors.primary),
+            ),
+          ),
+          maxLines: 3,
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final text = textController.text.trim();
+              if (text.isNotEmpty) {
+                Navigator.pop(context, text);
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+            child: Text('Partager', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && result.isNotEmpty) {
+      await _client.sendMessage('TEXT|$result');
+      _showSnackBar('Texte partagé', AppColors.success);
+    }
+  }
   Future<void> _toggleMobileScreenShare() async {
     if (!_client.isConnected) {
       _showSnackBar('Non connecté au PC', AppColors.error);
@@ -371,22 +494,6 @@ class _MobileScreenState extends State<MobileScreen> {
       } else {
         _showSnackBar('Erreur de partage', AppColors.error);
       }
-    }
-  }
-  
-  // Envoyer un message
-  Future<void> _sendMessage() async {
-    if (_messageController.text.isEmpty) return;
-    
-    final message = _messageController.text;
-    final success = await _client.sendMessage(message);
-    
-    if (success) {
-      _messageController.clear();
-      _showSnackBar('Message envoyé', AppColors.primary);
-      FocusScope.of(context).unfocus();
-    } else {
-      _showSnackBar('Erreur d\'envoi', AppColors.error);
     }
   }
   
@@ -473,7 +580,6 @@ class _MobileScreenState extends State<MobileScreen> {
   void dispose() {
     _scanner.stopScan();
     _client.dispose();
-    _messageController.dispose();
     super.dispose();
   }
   
@@ -495,8 +601,37 @@ class _MobileScreenState extends State<MobileScreen> {
     return AppBar(
       title: Row(
         children: [
-          Icon(Icons.sensors, color: Colors.white, size: 24),
-          const SizedBox(width: 10),
+          // Logo dans l'AppBar après connexion
+          if (_connectionState.isConnected) ...[
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+              ),
+              child: ClipOval(
+                child: Padding(
+                  padding: const EdgeInsets.all(4), // Plus d'espacement
+                  child: Image.asset(
+                    'assets/icons/logo.jpg',
+                    fit: BoxFit.contain, // Contenir entièrement l'image
+                    errorBuilder: (context, error, stackTrace) {
+                      return Icon(
+                        Icons.share,
+                        size: 14, // Réduit encore
+                        color: AppColors.primary,
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+          ] else ...[
+            Icon(Icons.sensors, color: Colors.white, size: 24),
+            const SizedBox(width: 10),
+          ],
           Text(
             'TortoiseShare',
             style: TextStyle(
@@ -714,6 +849,8 @@ class _MobileScreenState extends State<MobileScreen> {
                 _buildMessageCard(),
                 const SizedBox(height: 20),
                 _buildActionsSection(),
+                const SizedBox(height: 20),
+                _buildActionButtons(),
               ],
             ),
           ),
@@ -770,54 +907,33 @@ class _MobileScreenState extends State<MobileScreen> {
   }
   
   Widget _buildMessageCard() {
+    // Ne montrer la carte que s'il y a un transfert en cours
+    if (!_isTransferring) {
+      return const SizedBox.shrink(); // Carte invisible si pas de transfert
+    }
+    
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Message', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            Text('Transfert en cours', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 12),
             
-            // Afficher la progression du transfert si en cours
-            if (_isTransferring) ...[
-              Text('📤 Envoi: $_currentFileName', 
-                   style: TextStyle(fontSize: 14, color: AppColors.primary)),
-              const SizedBox(height: 8),
-              LinearProgressIndicator(
-                value: _transferProgress,
-                backgroundColor: AppColors.background,
-                color: AppColors.primary,
-                minHeight: 8,
-              ),
-              const SizedBox(height: 4),
-              Text('${(_transferProgress * 100).toStringAsFixed(0)}%',
-                   style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-              const SizedBox(height: 16),
-            ],
-            
-            TextField(
-              controller: _messageController,
-              maxLines: 3,
-              decoration: InputDecoration(
-                hintText: 'Tapez votre message...',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                filled: true,
-                fillColor: AppColors.background,
-              ),
-              onSubmitted: (_) => _sendMessage(),
+            // Afficher la progression du transfert
+            Text('📤 Envoi: $_currentFileName', 
+                 style: TextStyle(fontSize: 14, color: AppColors.primary)),
+            const SizedBox(height: 8),
+            LinearProgressIndicator(
+              value: _transferProgress,
+              backgroundColor: AppColors.background,
+              color: AppColors.primary,
+              minHeight: 8,
             ),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: _sendMessage,
-              icon: Icon(Icons.send, size: 20),
-              label: Text('Envoyer'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 50),
-              ),
-            ),
+            const SizedBox(height: 4),
+            Text('${(_transferProgress * 100).toStringAsFixed(0)}%',
+                 style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
           ],
         ),
       ),
@@ -828,21 +944,28 @@ class _MobileScreenState extends State<MobileScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Actions', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        Text('Fonctionnalités', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
         const SizedBox(height: 12),
         
-        // Bouton d'aide pour les permissions
+        // Explorateur de fichiers
         Container(
           margin: const EdgeInsets.only(bottom: 16),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppColors.info.withOpacity(0.1),
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.info.withOpacity(0.3)),
+            border: Border.all(color: AppColors.border),
           ),
           child: Row(
             children: [
-              Icon(Icons.info_outline, color: AppColors.info, size: 24),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.folder_open, color: AppColors.primary, size: 24),
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -853,11 +976,12 @@ class _MobileScreenState extends State<MobileScreen> {
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Le PC peut voir tes fichiers',
+                      'Le PC peut parcourir et télécharger tes fichiers',
                       style: TextStyle(
                         fontSize: 12,
                         color: AppColors.textSecondary,
@@ -875,56 +999,21 @@ class _MobileScreenState extends State<MobileScreen> {
                     ),
                   );
                 },
-                child: Text('Aide', style: TextStyle(color: AppColors.info)),
+                child: Text('Aide', style: TextStyle(color: AppColors.primary)),
               ),
             ],
           ),
         ),
-        
-        // Carte d'activation du contrôle à distance
-        Container(
-          margin: const EdgeInsets.only(bottom: 16),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.purple.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.purple.withOpacity(0.3)),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.touch_app, color: Colors.purple, size: 24),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Contrôle à distance',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Activer l\'accessibilité pour cliquer',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              TextButton(
-                onPressed: () {
-                   _screenShare.openAccessibilitySettings();
-                },
-                child: Text('Activer', style: TextStyle(color: Colors.purple)),
-              ),
-            ],
-          ),
-        ),
+      ],
+    );
+  }
+  
+  Widget _buildActionButtons() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Actions rapides', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 12),
         
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -938,6 +1027,8 @@ class _MobileScreenState extends State<MobileScreen> {
             _buildActionButton(Icons.file_upload, 'Fichier', () {
               _pickAndSendFile();
             }),
+            _buildActionButton(Icons.link, 'Lien', _shareLink),
+            _buildActionButton(Icons.text_fields, 'Texte', _shareText),
             _buildActionButton(Icons.notifications, 'Alerte', () async {
               await _client.sendAlert('PING');
               _showSnackBar('Alerte envoyée', AppColors.warning);
@@ -952,13 +1043,13 @@ class _MobileScreenState extends State<MobileScreen> {
     return Column(
       children: [
         Container(
-          width: 60,
-          height: 60,
+          width: 50, // Réduit de 60 à 50
+          height: 50, // Réduit de 60 à 50
           decoration: BoxDecoration(
             color: isActive 
                 ? AppColors.error.withOpacity(0.2) 
                 : AppColors.primary.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(15),
+            borderRadius: BorderRadius.circular(12), // Réduit de 15 à 12
             border: isActive 
                 ? Border.all(color: AppColors.error, width: 2)
                 : null,
@@ -967,16 +1058,16 @@ class _MobileScreenState extends State<MobileScreen> {
             icon: Icon(
               icon, 
               color: isActive ? AppColors.error : AppColors.primary, 
-              size: 28,
+              size: 24, // Réduit de 28 à 24
             ),
             onPressed: onTap,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6), // Réduit de 8 à 6
         Text(
           label, 
           style: TextStyle(
-            fontSize: 12, 
+            fontSize: 11, // Réduit de 12 à 11
             color: isActive ? AppColors.error : AppColors.textSecondary,
             fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
           ),

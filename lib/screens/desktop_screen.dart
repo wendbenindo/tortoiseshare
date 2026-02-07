@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:typed_data';
 import '../core/colors.dart';
 import '../core/network_helper.dart';
 import '../services/tcp_server.dart';
-import '../services/screen_share_service.dart';
 import '../screens/mobile_screen_viewer.dart';
 import '../models/remote_file.dart';
 import '../models/download_task.dart';
@@ -18,13 +18,15 @@ class DesktopScreen extends StatefulWidget {
 class _DesktopScreenState extends State<DesktopScreen> {
   // Service
   final TcpServer _server = TcpServer();
-  final ScreenShareService _screenShare = ScreenShareService();
   
   // État
   bool _isRunning = false;
   String? _serverIP;
   final List<LogEntry> _logs = [];
   int _messagesReceived = 0;
+  
+  // Pour les messages reçus (texte et liens)
+  final List<ReceivedMessage> _receivedMessages = [];
   
   // Pour les demandes de fichiers en attente
   final List<FileRequest> _pendingFileRequests = [];
@@ -43,8 +45,7 @@ class _DesktopScreenState extends State<DesktopScreen> {
   // Cache pour les miniatures d'images
   final Map<String, Uint8List> _thumbnailCache = {};
   
-  // Pour le partage d'écran
-  bool _isSharingScreen = false;
+  // Pour la visualisation de l'écran mobile
   bool _isViewingMobileScreen = false;
   GlobalKey<MobileScreenViewerState>? _viewerKey;
   
@@ -91,8 +92,27 @@ class _DesktopScreenState extends State<DesktopScreen> {
         break;
         
       case ServerMessageType.textMessage:
-        // Pas de log pour les messages texte
+        // Ajouter le message texte à la liste
+        _receivedMessages.add(ReceivedMessage(
+          type: MessageType.text,
+          content: message.data['text'],
+          sender: message.data['from'],
+          timestamp: DateTime.now(),
+        ));
         _messagesReceived++;
+        setState(() {}); // Rafraîchir l'UI
+        break;
+        
+      case ServerMessageType.linkMessage:
+        // Ajouter le lien à la liste
+        _receivedMessages.add(ReceivedMessage(
+          type: MessageType.link,
+          content: message.data['link'],
+          sender: message.data['from'],
+          timestamp: DateTime.now(),
+        ));
+        _messagesReceived++;
+        setState(() {}); // Rafraîchir l'UI
         break;
         
       case ServerMessageType.screenRequest:
@@ -569,45 +589,6 @@ class _DesktopScreenState extends State<DesktopScreen> {
     _server.requestFileDownload(nextTask.from, nextTask.filePath);
   }
   
-  // Démarrer/arrêter le partage d'écran
-  Future<void> _toggleScreenShare() async {
-    if (_connectedClientIP == null) {
-      _showSnackBar('Aucun appareil connecté');
-      return;
-    }
-    
-    if (_isSharingScreen) {
-      // Arrêter le partage
-      _screenShare.stopSharing();
-      await _server.notifyScreenShareStop(_connectedClientIP!);
-      
-      setState(() {
-        _isSharingScreen = false;
-      });
-      
-      _addLog('🛑 Partage d\'écran arrêté', LogType.screen, Icons.stop_screen_share);
-    } else {
-      // Démarrer le partage
-      _screenShare.onFrameCaptured = (frameData) {
-        _server.sendScreenFrame(_connectedClientIP!, frameData);
-      };
-      
-      final success = await _screenShare.startSharing();
-      
-      if (success) {
-        await _server.notifyScreenShareStart(_connectedClientIP!);
-        
-        setState(() {
-          _isSharingScreen = true;
-        });
-        
-        _addLog('🖥️ Partage d\'écran démarré', LogType.screen, Icons.screen_share);
-      } else {
-        _showSnackBar('Erreur: Impossible de capturer l\'écran');
-      }
-    }
-  }
-  
   void _showSnackBar(String message) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -619,7 +600,6 @@ class _DesktopScreenState extends State<DesktopScreen> {
   @override
   void dispose() {
     _server.dispose();
-    _screenShare.dispose();
     super.dispose();
   }
   
@@ -768,28 +748,6 @@ class _DesktopScreenState extends State<DesktopScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 12),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: ElevatedButton.icon(
-                onPressed: _toggleScreenShare,
-                icon: Icon(
-                  _isSharingScreen ? Icons.stop_screen_share : Icons.screen_share,
-                  color: Colors.white,
-                ),
-                label: Text(
-                  _isSharingScreen ? 'Arrêter partage' : 'Partager l\'écran',
-                  style: TextStyle(color: Colors.white),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _isSharingScreen ? AppColors.error : Colors.purple,
-                  minimumSize: Size(double.infinity, 48),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-            ),
           ],
           
           // Téléchargements en cours
@@ -811,6 +769,37 @@ class _DesktopScreenState extends State<DesktopScreen> {
                   ),
                   const SizedBox(height: 12),
                   ..._downloadQueue.map((task) => _buildCompactDownloadItem(task)).toList(),
+                ],
+              ),
+            ),
+          ],
+          
+          // Messages reçus
+          if (_receivedMessages.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'MESSAGES REÇUS',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // Afficher les 3 derniers messages
+                  ..._receivedMessages.reversed.take(3).map((msg) => _buildMessageItem(msg)).toList(),
+                  if (_receivedMessages.length > 3)
+                    TextButton(
+                      onPressed: _showAllMessages,
+                      child: Text('Voir tous (${_receivedMessages.length})', 
+                                 style: TextStyle(color: AppColors.primary, fontSize: 12)),
+                    ),
                 ],
               ),
             ),
@@ -924,6 +913,139 @@ class _DesktopScreenState extends State<DesktopScreen> {
               minHeight: 2,
             ),
           ],
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildMessageItem(ReceivedMessage message) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: InkWell(
+        onTap: () => _copyToClipboard(message.content),
+        borderRadius: BorderRadius.circular(8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  message.type == MessageType.link ? Icons.link : Icons.text_fields,
+                  size: 14,
+                  color: AppColors.primary,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  message.type == MessageType.link ? 'Lien' : 'Texte',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primary,
+                  ),
+                ),
+                Spacer(),
+                Text(
+                  '${message.timestamp.hour.toString().padLeft(2, '0')}:${message.timestamp.minute.toString().padLeft(2, '0')}',
+                  style: TextStyle(fontSize: 9, color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              message.content,
+              style: TextStyle(fontSize: 11),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Cliquer pour copier',
+              style: TextStyle(
+                fontSize: 9,
+                color: AppColors.textSecondary,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  // Copier dans le presse-papiers
+  Future<void> _copyToClipboard(String text) async {
+    try {
+      await Clipboard.setData(ClipboardData(text: text));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Copié dans le presse-papiers'),
+          backgroundColor: AppColors.success,
+          duration: Duration(seconds: 1),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur lors de la copie'),
+          backgroundColor: AppColors.error,
+          duration: Duration(seconds: 1),
+        ),
+      );
+    }
+  }
+  
+  // Afficher tous les messages dans un dialog
+  void _showAllMessages() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Messages reçus (${_receivedMessages.length})'),
+        content: Container(
+          width: 400,
+          height: 300,
+          child: ListView.builder(
+            itemCount: _receivedMessages.length,
+            itemBuilder: (context, index) {
+              final message = _receivedMessages.reversed.toList()[index];
+              return ListTile(
+                leading: Icon(
+                  message.type == MessageType.link ? Icons.link : Icons.text_fields,
+                  color: AppColors.primary,
+                ),
+                title: Text(message.content, maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: Text(
+                  '${message.timestamp.day}/${message.timestamp.month} ${message.timestamp.hour.toString().padLeft(2, '0')}:${message.timestamp.minute.toString().padLeft(2, '0')}',
+                  style: TextStyle(fontSize: 12),
+                ),
+                onTap: () {
+                  _copyToClipboard(message.content);
+                  Navigator.pop(context);
+                },
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              setState(() {
+                _receivedMessages.clear();
+              });
+              Navigator.pop(context);
+            },
+            child: Text('Effacer tout'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+            child: Text('Fermer', style: TextStyle(color: Colors.white)),
+          ),
         ],
       ),
     );
@@ -1343,4 +1465,25 @@ class FileRequest {
     required this.fileSize,
     required this.from,
   });
+}
+
+// Message reçu (texte ou lien)
+class ReceivedMessage {
+  final MessageType type;
+  final String content;
+  final String sender;
+  final DateTime timestamp;
+  
+  ReceivedMessage({
+    required this.type,
+    required this.content,
+    required this.sender,
+    required this.timestamp,
+  });
+}
+
+// Type de message
+enum MessageType {
+  text,
+  link,
 }

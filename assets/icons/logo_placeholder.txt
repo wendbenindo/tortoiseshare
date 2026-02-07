@@ -1,0 +1,9 @@
+Placez votre fichier logo.jpg ici.
+
+Le logo doit être :
+- Format : JPG ou PNG
+- Nom : logo.jpg
+- Taille recommandée : 512x512 pixels minimum
+- Fond transparent ou blanc de préférence
+
+Une fois le fichier ajouté, supprimez ce fichier placeholder.

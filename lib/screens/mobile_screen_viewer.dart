@@ -148,7 +148,7 @@ class MobileScreenViewerState extends State<MobileScreenViewer> {
           // Image interactive
           Expanded(
             child: Container(
-              padding: const EdgeInsets.all(20), // Espacement autour du téléphone
+              padding: const EdgeInsets.all(8), // Espacement minimal autour du téléphone
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   return GestureDetector(
@@ -158,13 +158,15 @@ class MobileScreenViewerState extends State<MobileScreenViewer> {
                       constraints.maxHeight
                     ),
                     child: Container(
+                      width: constraints.maxWidth,
+                      height: constraints.maxHeight,
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(19),
+                        borderRadius: BorderRadius.circular(18),
                         border: Border.all(color: Colors.black, width: 2),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.15),
+                            color: Colors.black.withOpacity(0.25),
                             blurRadius: 12,
                             spreadRadius: 2,
                             offset: Offset(0, 4),
@@ -172,7 +174,7 @@ class MobileScreenViewerState extends State<MobileScreenViewer> {
                         ],
                       ),
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(17), // 19 - 2 (border width)
+                        borderRadius: BorderRadius.circular(16), // 18 - 2 (border width)
                         child: _currentFrame != null
                             ? Image.memory(
                                 _currentFrame!,

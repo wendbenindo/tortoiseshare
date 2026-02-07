@@ -324,6 +324,12 @@ class TcpServer {
         type: ServerMessageType.textMessage,
         data: {'from': clientIP, 'text': text},
       ));
+    } else if (message.startsWith('LINK|')) {
+      final link = message.substring(5);
+      _messageController.add(ServerMessage(
+        type: ServerMessageType.linkMessage,
+        data: {'from': clientIP, 'link': link},
+      ));
     } else if (message.startsWith('SCREEN|REQUEST')) {
       _messageController.add(ServerMessage(
         type: ServerMessageType.screenRequest,
@@ -477,6 +483,7 @@ enum ServerMessageType {
   clientConnected,
   clientDisconnected,
   textMessage,
+  linkMessage,       // Nouveau type pour les liens
   screenRequest,
   screenShareStart,  // Début du partage d'écran
   screenShareStop,   // Fin du partage d'écran
