@@ -162,7 +162,7 @@ class _MobileScreenState extends State<MobileScreen> {
         setState(() {
           _connectionState = AppConnectionState(
             status: ConnectionStatus.idle,
-            message: '📱 Prêt à scanner le réseau',
+            message: 'Prêt à scanner le réseau',
           );
         });
         print('❌ Reconnexion automatique échouée');
@@ -294,7 +294,7 @@ class _MobileScreenState extends State<MobileScreen> {
     setState(() {
       _connectionState = AppConnectionState(
         status: ConnectionStatus.connecting,
-        message: '🔄 Connexion en cours...',
+        message: ' Connexion en cours...',
       );
     });
     
