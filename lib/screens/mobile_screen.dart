@@ -66,6 +66,27 @@ class _MobileScreenState extends State<MobileScreen> {
     // Écouter les messages du serveur
     _client.messageStream.listen((message) {
       _handleServerMessage(message);
+    }, onDone: () {
+      // Connexion perdue - retourner à l'écran de scan
+      if (mounted) {
+        setState(() {
+          _connectedDevice = null;
+          _connectionState = AppConnectionState(
+            status: ConnectionStatus.idle,
+            message: '🔌 Connexion perdue',
+          );
+        });
+        _showSnackBar('Connexion perdue avec le PC', AppColors.warning);
+      }
+    }, onError: (error) {
+      // Erreur de connexion - retourner à l'écran de scan
+      if (mounted) {
+        setState(() {
+          _connectedDevice = null;
+          _connectionState = AppConnectionState.error('Erreur de connexion');
+        });
+        _showSnackBar('Erreur de connexion', AppColors.error);
+      }
     });
     
     // Écouter la progression du scan
@@ -242,7 +263,7 @@ class _MobileScreenState extends State<MobileScreen> {
     if (_connectionState.isScanning || _connectionState.isConnected) return;
     
     setState(() {
-      _connectionState = AppConnectionState.scanning('🔍 Recherche en cours...');
+      _connectionState = AppConnectionState.scanning(' Recherche en cours...');
       _foundDevices.clear();
       _scanProgress = 0;
       _totalScans = 0;
@@ -307,6 +328,10 @@ class _MobileScreenState extends State<MobileScreen> {
       final name = message.substring(12);
       setState(() {
         _pcName = name.isNotEmpty ? name : 'PC TortoiseShare';
+        // S'assurer que l'état reste connecté
+        if (_connectedDevice != null) {
+          _connectionState = AppConnectionState.connected(_connectedDevice!.name);
+        }
       });
       _showSnackBar('Connecté à $_pcName', AppColors.success);
     } else if (message == 'FILE|REJECTED') {
@@ -499,11 +524,19 @@ class _MobileScreenState extends State<MobileScreen> {
   
   // Déconnecter
   Future<void> _disconnect() async {
+    // Arrêter le partage d'écran si actif
+    if (_isSharingScreen) {
+      _screenShare.stopSharing();
+      await _client.sendRawMessage('SCREEN|STOP');
+    }
+    
     await _client.disconnect();
     setState(() {
       _connectedDevice = null;
       _connectionState = AppConnectionState.idle();
-      _foundDevices.clear();
+      _isSharingScreen = false;
+      _isReceivingScreen = false;
+      _isTransferring = false;
     });
     _showSnackBar('Déconnecté', AppColors.warning);
   }
@@ -579,7 +612,9 @@ class _MobileScreenState extends State<MobileScreen> {
   @override
   void dispose() {
     _scanner.stopScan();
+    _screenShare.stopSharing();
     _client.dispose();
+    _screenFrameController.close();
     super.dispose();
   }
   

@@ -777,35 +777,59 @@ class _DesktopScreenState extends State<DesktopScreen> {
           // Messages reçus
           if (_receivedMessages.isNotEmpty) ...[
             const SizedBox(height: 20),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'MESSAGES REÇUS',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textSecondary,
-                      letterSpacing: 1,
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'MESSAGES REÇUS',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary,
+                            letterSpacing: 1,
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _showAllMessages,
+                          style: TextButton.styleFrom(
+                            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            minimumSize: Size(0, 0),
+                          ),
+                          child: Text(
+                            'Tout voir (${_receivedMessages.length})',
+                            style: TextStyle(
+                              color: AppColors.primary,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  // Afficher les 3 derniers messages
-                  ..._receivedMessages.reversed.take(3).map((msg) => _buildMessageItem(msg)).toList(),
-                  if (_receivedMessages.length > 3)
-                    TextButton(
-                      onPressed: _showAllMessages,
-                      child: Text('Voir tous (${_receivedMessages.length})', 
-                                 style: TextStyle(color: AppColors.primary, fontSize: 12)),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      itemCount: _receivedMessages.length > 5 ? 5 : _receivedMessages.length,
+                      reverse: true, // Les plus récents en haut
+                      itemBuilder: (context, index) {
+                        final message = _receivedMessages[_receivedMessages.length - 1 - index];
+                        return _buildMessageItem(message);
+                      },
                     ),
+                  ),
                 ],
               ),
             ),
-          ],
-          
-          Spacer(),
+          ] else
+            Spacer(),
           
           // Version en bas
           Padding(
@@ -938,7 +962,7 @@ class _DesktopScreenState extends State<DesktopScreen> {
                 Icon(
                   message.type == MessageType.link ? Icons.link : Icons.text_fields,
                   size: 14,
-                  color: AppColors.primary,
+                  color: message.type == MessageType.link ? Colors.blue : Colors.green,
                 ),
                 const SizedBox(width: 6),
                 Text(
@@ -946,7 +970,7 @@ class _DesktopScreenState extends State<DesktopScreen> {
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.primary,
+                    color: message.type == MessageType.link ? Colors.blue : Colors.green,
                   ),
                 ),
                 Spacer(),
@@ -964,13 +988,19 @@ class _DesktopScreenState extends State<DesktopScreen> {
               overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 4),
-            Text(
-              'Cliquer pour copier',
-              style: TextStyle(
-                fontSize: 9,
-                color: AppColors.textSecondary,
-                fontStyle: FontStyle.italic,
-              ),
+            Row(
+              children: [
+                Icon(Icons.copy, size: 10, color: AppColors.textSecondary),
+                const SizedBox(width: 4),
+                Text(
+                  'Cliquer pour copier',
+                  style: TextStyle(
+                    fontSize: 9,
+                    color: AppColors.textSecondary,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -1005,41 +1035,75 @@ class _DesktopScreenState extends State<DesktopScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Messages reçus (${_receivedMessages.length})'),
+        title: Row(
+          children: [
+            Icon(Icons.message, color: AppColors.primary),
+            const SizedBox(width: 12),
+            Text('Messages reçus (${_receivedMessages.length})'),
+          ],
+        ),
         content: Container(
-          width: 400,
-          height: 300,
-          child: ListView.builder(
-            itemCount: _receivedMessages.length,
-            itemBuilder: (context, index) {
-              final message = _receivedMessages.reversed.toList()[index];
-              return ListTile(
-                leading: Icon(
-                  message.type == MessageType.link ? Icons.link : Icons.text_fields,
-                  color: AppColors.primary,
+          width: 500,
+          height: 400,
+          child: _receivedMessages.isEmpty
+              ? Center(
+                  child: Text(
+                    'Aucun message',
+                    style: TextStyle(color: AppColors.textSecondary),
+                  ),
+                )
+              : ListView.builder(
+                  itemCount: _receivedMessages.length,
+                  reverse: true, // Les plus récents en haut
+                  itemBuilder: (context, index) {
+                    final message = _receivedMessages[_receivedMessages.length - 1 - index];
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: message.type == MessageType.link
+                                ? Colors.blue.withOpacity(0.1)
+                                : Colors.green.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(
+                            message.type == MessageType.link ? Icons.link : Icons.text_fields,
+                            color: message.type == MessageType.link ? Colors.blue : Colors.green,
+                            size: 20,
+                          ),
+                        ),
+                        title: SelectableText(
+                          message.content,
+                          style: TextStyle(fontSize: 14),
+                        ),
+                        subtitle: Text(
+                          '${message.timestamp.day}/${message.timestamp.month} ${message.timestamp.hour.toString().padLeft(2, '0')}:${message.timestamp.minute.toString().padLeft(2, '0')}',
+                          style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                        ),
+                        trailing: IconButton(
+                          icon: Icon(Icons.copy, size: 18, color: AppColors.primary),
+                          onPressed: () => _copyToClipboard(message.content),
+                          tooltip: 'Copier',
+                        ),
+                      ),
+                    );
+                  },
                 ),
-                title: Text(message.content, maxLines: 1, overflow: TextOverflow.ellipsis),
-                subtitle: Text(
-                  '${message.timestamp.day}/${message.timestamp.month} ${message.timestamp.hour.toString().padLeft(2, '0')}:${message.timestamp.minute.toString().padLeft(2, '0')}',
-                  style: TextStyle(fontSize: 12),
-                ),
-                onTap: () {
-                  _copyToClipboard(message.content);
-                  Navigator.pop(context);
-                },
-              );
-            },
-          ),
         ),
         actions: [
-          TextButton(
+          TextButton.icon(
             onPressed: () {
               setState(() {
                 _receivedMessages.clear();
+                _messagesReceived = 0;
               });
               Navigator.pop(context);
+              _showSnackBar('Messages effacés');
             },
-            child: Text('Effacer tout'),
+            icon: Icon(Icons.delete_sweep),
+            label: Text('Effacer tout'),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context),
