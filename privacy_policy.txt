@@ -1,0 +1,132 @@
+POLITIQUE DE CONFIDENTIALITÉ - TORTOISESHARE
+
+Dernière mise à jour : 16 février 2026
+
+═══════════════════════════════════════════════════════════════════
+
+EN RÉSUMÉ
+TortoiseShare ne collecte, ne stocke et ne partage AUCUNE donnée personnelle. 
+Toutes les communications se font directement entre vos appareils sur votre réseau local.
+
+═══════════════════════════════════════════════════════════════════
+
+1. INTRODUCTION
+
+Kalane ("nous", "notre" ou "nos") exploite l'application mobile TortoiseShare (ci-après dénommée "l'Application").
+
+Cette page vous informe de nos politiques concernant la collecte, l'utilisation et la divulgation des données personnelles lorsque vous utilisez notre Application.
+
+
+2. COLLECTE ET UTILISATION DES DONNÉES
+
+TortoiseShare ne collecte AUCUNE donnée personnelle.
+
+Notre application fonctionne exclusivement sur votre réseau local (WiFi) et ne nécessite aucune connexion à Internet ni à nos serveurs. Toutes les données restent sur vos appareils.
+
+2.1 Données Non Collectées
+
+Nous ne collectons PAS :
+• Informations d'identification personnelle (nom, email, numéro de téléphone)
+• Données de localisation
+• Fichiers transférés entre vos appareils
+• Historique d'utilisation
+• Données analytiques ou de diagnostic
+• Cookies ou technologies de suivi
+
+2.2 Données Stockées Localement
+
+L'application stocke uniquement sur votre appareil :
+• Historique de connexion : Liste des appareils précédemment connectés (adresses IP locales et noms d'appareils) pour faciliter les reconnexions
+• Préférences : Paramètres de l'application
+
+Ces données sont stockées uniquement sur votre appareil et ne sont jamais transmises à des serveurs externes.
+
+
+3. PERMISSIONS REQUISES
+
+L'application demande les permissions suivantes pour fonctionner :
+
+3.1 Accès au Stockage
+• Pourquoi : Pour permettre au PC de parcourir et télécharger vos fichiers
+• Utilisation : Lecture des fichiers que vous choisissez de partager
+• Données transmises : Uniquement entre vos appareils sur votre réseau local
+
+3.2 Accès au Réseau
+• Pourquoi : Pour communiquer avec votre PC sur le réseau WiFi local
+• Utilisation : Connexion directe entre mobile et PC (aucun serveur externe)
+• Portée : Uniquement votre réseau local (pas d'accès Internet requis)
+
+3.3 Capture d'Écran (Optionnel)
+• Pourquoi : Pour la fonctionnalité de partage d'écran mobile vers PC
+• Utilisation : Transmission en temps réel de votre écran vers votre PC
+• Données transmises : Uniquement vers votre PC sur le réseau local
+
+
+4. SÉCURITÉ DES DONNÉES
+
+Bien que nous ne collections aucune donnée, nous prenons la sécurité au sérieux :
+• Communication locale uniquement : Aucune donnée ne quitte votre réseau local
+• Pas de serveurs tiers : Aucune connexion à des serveurs externes
+• Contrôle total : Vous décidez quels fichiers partager et quand
+• Connexion directe : Communication peer-to-peer entre vos appareils
+
+
+5. PARTAGE DE DONNÉES AVEC DES TIERS
+
+Nous ne partageons AUCUNE donnée avec des tiers car nous ne collectons aucune donnée.
+
+L'application ne contient pas :
+• Services d'analyse (Google Analytics, Firebase, etc.)
+• Publicités
+• Réseaux sociaux intégrés
+• Services de suivi
+
+
+6. DONNÉES DES ENFANTS
+
+Notre application ne collecte aucune donnée, y compris auprès des enfants de moins de 13 ans. L'application peut être utilisée en toute sécurité par tous les âges.
+
+
+7. MODIFICATIONS DE CETTE POLITIQUE
+
+Nous pouvons mettre à jour notre politique de confidentialité de temps en temps. Nous vous informerons de tout changement en publiant la nouvelle politique sur cette page et en mettant à jour la date de "dernière mise à jour" en haut de cette politique.
+
+Il vous est conseillé de consulter périodiquement cette politique de confidentialité pour tout changement.
+
+
+8. VOS DROITS
+
+Étant donné que nous ne collectons aucune donnée personnelle, il n'y a aucune donnée à :
+• Consulter
+• Modifier
+• Supprimer
+• Exporter
+
+Vous pouvez désinstaller l'application à tout moment pour supprimer toutes les données locales (historique de connexion et préférences).
+
+
+9. CONFORMITÉ RGPD
+
+Bien que notre application ne collecte aucune donnée personnelle, nous respectons les principes du Règlement Général sur la Protection des Données (RGPD) :
+• Minimisation des données : Nous ne collectons aucune donnée
+• Transparence : Cette politique explique clairement notre approche
+• Contrôle utilisateur : Vous contrôlez entièrement vos données
+• Sécurité : Communication locale uniquement
+
+
+10. JURIDICTION
+
+Cette politique de confidentialité est régie par les lois du Burkina Faso et de l'Union Européenne concernant la protection des données.
+
+
+11. NOUS CONTACTER
+
+Si vous avez des questions concernant cette politique de confidentialité, vous pouvez nous contacter :
+
+• Par email : [VOTRE_EMAIL]
+• Développeur : Kalane - wendbenindo
+• Localisation : Ouagadougou, Burkina Faso
+
+═══════════════════════════════════════════════════════════════════
+
+© 2026 Kalane - TortoiseShare. Tous droits réservés.
