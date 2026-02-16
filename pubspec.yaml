@@ -23,6 +23,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^2.0.0
+  flutter_launcher_icons: ^0.13.1
 
 flutter:
   uses-material-design: true
@@ -32,3 +33,18 @@ flutter:
     - assets/icons/
 
   generate: true
+
+# Configuration des icônes de l'application
+flutter_launcher_icons:
+  android: true
+  ios: false
+  windows:
+    generate: true
+    image_path: "assets/icons/logo.jpg"
+    icon_size: 48
+  image_path: "assets/icons/logo.jpg"
+  # Désactiver les icônes adaptatives pour éviter le découpage
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icons/logo.jpg"
+  remove_alpha_ios: true
+  min_sdk_android: 21

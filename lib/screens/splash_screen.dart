@@ -100,8 +100,8 @@ class _SplashScreenState extends State<SplashScreen>
     if (!mounted) return;
     _textController.forward();
     
-    // Attendre 2 secondes puis commencer le fade out
-    await Future.delayed(const Duration(milliseconds: 2000));
+    // Attendre 2.5 secondes puis commencer le fade out
+    await Future.delayed(const Duration(milliseconds: 2500));
     if (!mounted) return;
     
     // Commencer le fade out
